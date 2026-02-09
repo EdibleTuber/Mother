@@ -1,5 +1,5 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@mariozechner/pi-agent-core";
-import { getEnvApiKey, getModel, type ImageContent, type KnownProvider, type UserMessage } from "@mariozechner/pi-ai";
+import { getModel, type ImageContent, type UserMessage } from "@mariozechner/pi-ai";
 import {
 	AgentSession,
 	AuthStorage,
@@ -86,13 +86,6 @@ function resolveModel(): any {
 }
 
 // NOTE: Model is resolved lazily in createRunner() to ensure env vars are available
-
-function resolveApiKey(provider: string): string | undefined {
-	if (provider === "ollama") {
-		return "ollama";
-	}
-	return getEnvApiKey(provider as KnownProvider);
-}
 
 /**
  * Check if ollama server is reachable.
@@ -835,7 +828,7 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 			tools,
 		},
 		convertToLlm,
-		getApiKey: async (provider: string) => resolveApiKey(provider),
+		getApiKey: async (provider: string) => authStorage.getApiKey(provider),
 	});
 
 	// Explicitly set the model (initialState spread doesn't reliably set it)
