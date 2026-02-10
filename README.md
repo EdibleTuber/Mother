@@ -89,31 +89,36 @@ This will:
 
 Tokens are stored in `~/.pi/agent/auth.json`. Both Mother (Haiku) and the Claude Code escalation tool share these credentials. Tokens auto-refresh.
 
-### 10. Set up Discord environment
+### 10. Set up Discord secrets
 
-Add to `~/.bashrc`:
+Store tokens in a root-owned env file (not `.bashrc`):
 
 ```bash
-export DISCORD_BOT_TOKEN="your_bot_token"
-export DISCORD_GUILD_ID="your_guild_id"
+sudo tee /etc/mother.env << 'EOF'
+DISCORD_BOT_TOKEN=your_bot_token
+DISCORD_GUILD_ID=your_guild_id
+EOF
+
+sudo chmod 600 /etc/mother.env
+sudo chown root:root /etc/mother.env
 ```
 
-Then reload: `source ~/.bashrc`
+systemd reads this before dropping to the `mother` user, so the process gets the vars but the user can't read the file directly.
 
 ### 11. Start Mother
 
 ```bash
 mkdir -p ~/mother-workspace
-mother ~/mother-workspace --sandbox=host
+node ~/pi-mono/packages/mother/dist/main.js ~/mother-workspace --sandbox=host
 ```
 
-She bootstraps the workspace structure on first run. Use `--cli` instead of Discord for local testing:
+She bootstraps the workspace structure on first run. Use `--cli` for local testing without Discord:
 
 ```bash
-mother ~/mother-workspace --sandbox=host --cli
+node ~/pi-mono/packages/mother/dist/main.js ~/mother-workspace --sandbox=host --cli
 ```
 
-### 12. (Optional) Auto-start Mother on boot
+### 12. Auto-start Mother on boot
 
 Create `/etc/systemd/system/mother.service`:
 
@@ -125,17 +130,18 @@ Wants=network-online.target
 
 [Service]
 User=youruser
-Environment=DISCORD_BOT_TOKEN=your_bot_token
-Environment=DISCORD_GUILD_ID=your_guild_id
-ExecStart=/home/youruser/pi-mono/packages/mother/dist/main.js /home/youruser/mother-workspace --sandbox=host
+EnvironmentFile=/etc/mother.env
+ExecStart=/usr/bin/node /home/youruser/pi-mono/packages/mother/dist/main.js /home/youruser/mother-workspace --sandbox=host
 Restart=always
 RestartSec=10
+WorkingDirectory=/home/youruser/pi-mono/packages/mother
 
 [Install]
 WantedBy=multi-user.target
 ```
 
 ```bash
+sudo systemctl daemon-reload
 sudo systemctl enable mother
 sudo systemctl start mother
 sudo journalctl -u mother -f  # watch logs
@@ -180,7 +186,8 @@ cd ~/pi-mono
 git pull
 npm ci
 npm run build
-sudo systemctl restart mother  # if using systemd
+cd packages/mother && npm run build  # mother is not in the root build chain
+sudo systemctl restart mother        # if using systemd
 ```
 
 ## Architecture
@@ -195,14 +202,31 @@ Discord <-> Mother (Haiku 4.5 on Pi) --escalation--> Claude Code (Sonnet/Opus)
         (memory, logs, skills, events)
 ```
 
+### Future: Worker Architecture
+
+Mother will orchestrate Docker containers on a GPU-equipped inference server for heavy workloads:
+
+```
+Mother (Pi 5, orchestrator)
+  |
+  v  REST API
+Inference Server (GPU, Docker)
+  |-- RE worker (jadx, ghidra, radare2)
+  |-- Asset worker (Blender headless, Godot)
+  |-- Workers get Ollama access for tasks needing local LLM reasoning
+```
+
+The API enforces guardrails: container caps, allowed images only, resource limits, and auto-kill timeouts.
+
 See [`packages/mother/DESIGN.md`](packages/mother/DESIGN.md) for full architecture documentation.
 
 ## Development
 
 ```bash
 npm install          # Install all dependencies
-npm run build        # Build all packages
+npm run build        # Build all packages (does not include mother)
 npm run check        # Lint, format, and type check (biome + tsgo)
+cd packages/mother && npm run build  # Build mother separately
 ```
 
 Mother dev mode (file watching):
