@@ -16,6 +16,7 @@ import { ChannelStore } from "./store.js";
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID;
+const MOTHER_ALLOWED_USERS = process.env.MOTHER_ALLOWED_USERS;
 
 interface ParsedArgs {
 	workingDir?: string;
@@ -404,11 +405,18 @@ log.logStartup(workingDir, sandbox.type === "host" ? "host" : `docker:${sandbox.
 // Shared store for attachment downloads
 const sharedStore = new ChannelStore({ workingDir });
 
+const allowedUsers = MOTHER_ALLOWED_USERS
+	? MOTHER_ALLOWED_USERS.split(",")
+			.map((s) => s.trim())
+			.filter(Boolean)
+	: undefined;
+
 const bot = new DiscordBotClass(handler, {
 	botToken: DISCORD_BOT_TOKEN!,
 	guildId: DISCORD_GUILD_ID!,
 	workingDir,
 	store: sharedStore,
+	allowedUsers,
 });
 
 // Start events watcher

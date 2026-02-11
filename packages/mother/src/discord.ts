@@ -148,15 +148,23 @@ export class DiscordBot {
 	private channelMap = new Map<string, DiscordChannel>();
 	private queues = new Map<string, ChannelQueue>();
 	private rateLimiter = new RateLimiter();
+	private allowedUsers: Set<string> | null = null;
 
 	constructor(
 		handler: MotherHandler,
-		config: { botToken: string; guildId: string; workingDir: string; store: ChannelStore },
+		config: {
+			botToken: string;
+			guildId: string;
+			workingDir: string;
+			store: ChannelStore;
+			allowedUsers?: string[];
+		},
 	) {
 		this.handler = handler;
 		this.workingDir = config.workingDir;
 		this.store = config.store;
 		this.guildId = config.guildId;
+		this.allowedUsers = config.allowedUsers ? new Set(config.allowedUsers) : null;
 
 		this.client = new Client({
 			intents: [
@@ -313,6 +321,11 @@ export class DiscordBot {
 			// Skip bot messages
 			if (message.author.bot) return;
 			if (message.author.id === this.botUserId) return;
+
+			// Skip users not on the allowlist
+			if (this.allowedUsers && !this.allowedUsers.has(message.author.id)) {
+				return;
+			}
 
 			const isDM = message.channel.type === ChannelType.DM;
 			const isMention = message.mentions.has(this.botUserId!);

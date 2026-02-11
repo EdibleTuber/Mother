@@ -97,11 +97,14 @@ Store tokens in a root-owned env file (not `.bashrc`):
 sudo tee /etc/mother.env << 'EOF'
 DISCORD_BOT_TOKEN=your_bot_token
 DISCORD_GUILD_ID=your_guild_id
+MOTHER_ALLOWED_USERS=comma,separated,discord,user,ids
 EOF
 
 sudo chmod 600 /etc/mother.env
 sudo chown root:root /etc/mother.env
 ```
+
+`MOTHER_ALLOWED_USERS` is a comma-separated list of Discord user IDs that Mother will respond to. If unset, she responds to everyone in the guild. To find your Discord user ID, enable Developer Mode in Discord settings and right-click your username.
 
 systemd reads this before dropping to the `mother` user, so the process gets the vars but the user can't read the file directly.
 
