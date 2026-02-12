@@ -3,6 +3,7 @@ import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { extname } from "path";
 import type { Executor } from "../sandbox.js";
+import { guardPath } from "./guard.js";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult, truncateHead } from "./truncate.js";
 
 /**
@@ -37,7 +38,7 @@ interface ReadToolDetails {
 	truncation?: TruncationResult;
 }
 
-export function createReadTool(executor: Executor): AgentTool<typeof readSchema> {
+export function createReadTool(executor: Executor, workspaceDir?: string): AgentTool<typeof readSchema> {
 	return {
 		name: "read",
 		label: "read",
@@ -48,6 +49,12 @@ export function createReadTool(executor: Executor): AgentTool<typeof readSchema>
 			{ path, offset, limit }: { label?: string; path: string; offset?: number; limit?: number },
 			signal?: AbortSignal,
 		): Promise<{ content: (TextContent | ImageContent)[]; details: ReadToolDetails | undefined }> => {
+			if (workspaceDir) {
+				const check = guardPath(path, workspaceDir);
+				if (!check.allowed) throw new Error(check.reason!);
+				path = check.resolvedPath!;
+			}
+
 			const mimeType = isImageFile(path);
 
 			if (mimeType) {

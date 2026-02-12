@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { Executor } from "../sandbox.js";
+import { guardCommand } from "./guard.js";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult, truncateTail } from "./truncate.js";
 
 /**
@@ -37,6 +38,9 @@ export function createBashTool(executor: Executor): AgentTool<typeof bashSchema>
 			{ command, timeout }: { label?: string; command: string; timeout?: number },
 			signal?: AbortSignal,
 		) => {
+			const check = guardCommand(command);
+			if (!check.allowed) throw new Error(check.reason!);
+
 			// Track output for potential temp file writing
 			let tempFilePath: string | undefined;
 			let tempFileStream: ReturnType<typeof createWriteStream> | undefined;

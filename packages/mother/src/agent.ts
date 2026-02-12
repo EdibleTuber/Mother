@@ -672,15 +672,6 @@ These are NOT injected into your prompt — use grep to search them when you nee
 ### Current Memory
 ${memory}
 
-## Safety
-- NEVER run destructive commands without asking the user first: rm -rf, dd, mkfs, fdisk, format operations
-- NEVER modify system services (systemctl, service) without asking first
-- NEVER use sudo or run commands as root without asking first
-- NEVER access or read SSH keys, API tokens, .env files, or credentials outside your workspace
-- NEVER modify /etc, /root, or system configuration files
-- If a command could cause data loss or system instability, describe what you plan to do and wait for confirmation
-- Stay within your workspace directory for file operations unless the user explicitly directs you elsewhere
-
 ## Tools
 - bash: Run shell commands (primary tool). Install packages as needed.
 - read: Read files
@@ -796,8 +787,9 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 	const hostWorkspaceDir = channelDir.replace(`/${channelId}`, "");
 	const workspacePath = executor.getWorkspacePath(hostWorkspaceDir);
 
-	// Create tools
-	const tools = createMomTools(executor, hostWorkspaceDir);
+	// Create tools (guards active in host mode only — docker sandbox handles isolation)
+	const guardWorkspaceDir = sandboxConfig.type === "host" ? hostWorkspaceDir : undefined;
+	const tools = createMomTools(executor, hostWorkspaceDir, guardWorkspaceDir);
 	const memory = getMemory(channelDir);
 	const motherNotes = getMotherNotes(channelDir);
 	const skills = loadMotherSkills(channelDir, workspacePath);

@@ -193,6 +193,30 @@ cd packages/mother && npm run build  # mother is not in the root build chain
 sudo systemctl restart mother        # if using systemd
 ```
 
+## Security
+
+Mother uses structural enforcement at the tool level to guard against prompt injection and misuse. These guards run before execution and cannot be bypassed by the LLM. Active in host mode only (docker sandbox already isolates).
+
+- **Discord user allowlist** -- `MOTHER_ALLOWED_USERS` restricts which Discord users Mother responds to.
+- **Command whitelist** -- The first binary in each command segment (split by `&&`, `||`, `;`, `|`) must be on a whitelist. Unknown commands are denied. Shell builtins (`cd`, `echo`, `pwd`, etc.) are implicitly allowed, except `eval` and `exec`. A small critical-pattern blocklist supplements the whitelist (`rm -rf /`, fork bombs).
+- **Path scoping** -- File tools (read, write, edit, attach) only allow access to the workspace directory, `/tmp`, and any extra paths from `MOTHER_ALLOWED_PATHS`.
+
+### Configuration
+
+| Env var | Description |
+|---------|-------------|
+| `MOTHER_ALLOWED_USERS` | Comma-separated Discord user IDs |
+| `MOTHER_ALLOWED_PATHS` | Colon-separated extra paths for file tools (e.g. `/opt/data:/mnt/shared`) |
+| `MOTHER_ALLOWED_COMMANDS` | `+/-` prefixed, comma-separated command modifications (e.g. `+rustup,-ssh,-scp`) |
+
+`MOTHER_ALLOWED_COMMANDS` uses `+`/`-` prefix syntax to add/remove from the default whitelist. No prefix is treated as `+`. Example for a restrictive deployment:
+
+```
+MOTHER_ALLOWED_COMMANDS=-ssh,-scp,-rsync,-python,-python3,-node,-npm,-npx,-kill,-pkill
+```
+
+**Security note:** Language runtimes (node, python, etc.) can spawn arbitrary subprocesses, effectively bypassing the whitelist. The permissive default trusts that the LLM won't actively subvert the guard -- this is defense-in-depth for prompt injection, not a security boundary. For multi-user deployments, remove runtimes from the whitelist.
+
 ## Architecture
 
 Mother is a competent agent that handles most tasks directly (file edits, bash commands, code writing). For complex multi-file work, she escalates to Claude Code (Sonnet/Opus) via the `claude` tool.

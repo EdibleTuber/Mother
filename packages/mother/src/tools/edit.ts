@@ -2,6 +2,7 @@ import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import * as Diff from "diff";
 import type { Executor } from "../sandbox.js";
+import { guardPath } from "./guard.js";
 
 /**
  * Generate a unified diff string with line numbers and context
@@ -93,7 +94,7 @@ const editSchema = Type.Object({
 	newText: Type.String({ description: "New text to replace the old text with" }),
 });
 
-export function createEditTool(executor: Executor): AgentTool<typeof editSchema> {
+export function createEditTool(executor: Executor, workspaceDir?: string): AgentTool<typeof editSchema> {
 	return {
 		name: "edit",
 		label: "edit",
@@ -105,6 +106,12 @@ export function createEditTool(executor: Executor): AgentTool<typeof editSchema>
 			{ path, oldText, newText }: { label?: string; path: string; oldText: string; newText: string },
 			signal?: AbortSignal,
 		) => {
+			if (workspaceDir) {
+				const check = guardPath(path, workspaceDir);
+				if (!check.allowed) throw new Error(check.reason!);
+				path = check.resolvedPath!;
+			}
+
 			// Read the file
 			const readResult = await executor.exec(`cat ${shellEscape(path)}`, { signal });
 			if (readResult.code !== 0) {

@@ -1,6 +1,7 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { Executor } from "../sandbox.js";
+import { guardPath } from "./guard.js";
 
 const writeSchema = Type.Object({
 	label: Type.Optional(Type.String({ description: "Brief description of what you're writing (shown to user)" })),
@@ -8,7 +9,7 @@ const writeSchema = Type.Object({
 	content: Type.String({ description: "Content to write to the file" }),
 });
 
-export function createWriteTool(executor: Executor): AgentTool<typeof writeSchema> {
+export function createWriteTool(executor: Executor, workspaceDir?: string): AgentTool<typeof writeSchema> {
 	return {
 		name: "write",
 		label: "write",
@@ -20,6 +21,12 @@ export function createWriteTool(executor: Executor): AgentTool<typeof writeSchem
 			{ path, content }: { label?: string; path: string; content: string },
 			signal?: AbortSignal,
 		) => {
+			if (workspaceDir) {
+				const check = guardPath(path, workspaceDir);
+				if (!check.allowed) throw new Error(check.reason!);
+				path = check.resolvedPath!;
+			}
+
 			// Create parent directories and write file using heredoc
 			const dir = path.includes("/") ? path.substring(0, path.lastIndexOf("/")) : ".";
 

@@ -1,6 +1,7 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import { basename, resolve as resolvePath } from "path";
+import { guardPath } from "./guard.js";
 
 // This will be set by the agent before running
 let uploadFn: ((filePath: string, title?: string) => Promise<void>) | null = null;
@@ -15,13 +16,8 @@ const attachSchema = Type.Object({
 	title: Type.Optional(Type.String({ description: "Title for the file (defaults to filename)" })),
 });
 
-export const attachTool: AgentTool<typeof attachSchema> = {
-	name: "attach",
-	label: "attach",
-	description:
-		"Attach a file to your response. Use this to share files, images, or documents with the user in Discord. Only files from /workspace/ can be attached.",
-	parameters: attachSchema,
-	execute: async (
+function makeAttachExecute(workspaceDir?: string) {
+	return async (
 		_toolCallId: string,
 		{ path, title }: { label?: string; path: string; title?: string },
 		signal?: AbortSignal,
@@ -34,6 +30,12 @@ export const attachTool: AgentTool<typeof attachSchema> = {
 			throw new Error("Operation aborted");
 		}
 
+		if (workspaceDir) {
+			const check = guardPath(path, workspaceDir);
+			if (!check.allowed) throw new Error(check.reason!);
+			path = check.resolvedPath!;
+		}
+
 		const absolutePath = resolvePath(path);
 		const fileName = title || basename(absolutePath);
 
@@ -43,5 +45,25 @@ export const attachTool: AgentTool<typeof attachSchema> = {
 			content: [{ type: "text" as const, text: `Attached file: ${fileName}` }],
 			details: undefined,
 		};
-	},
+	};
+}
+
+export const attachTool: AgentTool<typeof attachSchema> = {
+	name: "attach",
+	label: "attach",
+	description:
+		"Attach a file to your response. Use this to share files, images, or documents with the user in Discord. Only files from /workspace/ can be attached.",
+	parameters: attachSchema,
+	execute: makeAttachExecute(),
 };
+
+export function createAttachTool(workspaceDir: string): AgentTool<typeof attachSchema> {
+	return {
+		name: "attach",
+		label: "attach",
+		description:
+			"Attach a file to your response. Use this to share files, images, or documents with the user in Discord. Only files from /workspace/ can be attached.",
+		parameters: attachSchema,
+		execute: makeAttachExecute(workspaceDir),
+	};
+}
