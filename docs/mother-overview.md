@@ -17,7 +17,7 @@ Discord --> Pi 5 (Mother) --> Inference Server (192.168.1.14)
                 +-- Per-channel agent sessions
                 +-- Event scheduler (cron, one-shot, immediate)
                 +-- Persistent memory (MEMORY.md files)
-                +-- Tool execution (bash, read, write, edit, attach, claude)
+                +-- Tool execution (bash, read, write, edit, attach)
 ```
 
 Mother runs as a Node.js process on the Pi. Discord messages arrive via the Discord.js client, get routed through an allowlist check and per-channel queue, then land in an agent session that calls the LLM and executes tool calls in a loop until the model produces a final text response.
@@ -43,7 +43,6 @@ Mother runs as a Node.js process on the Pi. Discord messages arrive via the Disc
 | write | Create or overwrite files | Auto-creates parent directories |
 | edit | Exact find-and-replace in files | Target string must match exactly once |
 | attach | Upload files to Discord | Path-restricted in host mode |
-| claude | Delegate a task to the Claude Code CLI | Default: 20 turns, 10 min timeout |
 
 Tool execution respects the command whitelist and path scoping configured via environment variables. In Docker sandbox mode, bash commands run inside the specified container.
 
@@ -111,9 +110,6 @@ All fields below live in `{workspace}/settings.json` and are loaded at startup. 
 | discord.threadName | string | "Details" | Thread name for tool output |
 | tools.bashMaxLines | number | 2000 | Bash output line limit |
 | tools.bashMaxBytes | number | 51200 | Bash output byte limit |
-| tools.claudeModel | string | "claude-sonnet-4-5-20250929" | Model used for Claude delegation |
-| tools.claudeMaxTurns | number | 20 | Claude delegation max turns |
-| tools.claudeTimeout | number | 600 | Claude delegation timeout in seconds |
 | events.debounceMs | number | 100 | Event file creation debounce |
 | events.maxRetries | number | 3 | Event JSON parse retries |
 | events.retryBaseMs | number | 100 | Event retry base delay |

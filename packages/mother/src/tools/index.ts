@@ -3,7 +3,6 @@ import type { MotherSettingsManager } from "../context.js";
 import type { Executor } from "../sandbox.js";
 import { attachTool, createAttachTool } from "./attach.js";
 import { createBashTool } from "./bash.js";
-import { createClaudeTool } from "./claude.js";
 import { createEditTool } from "./edit.js";
 import { initCommandGuard, initPathGuard, parseAllowedCommandsEnv } from "./guard.js";
 import { createReadTool } from "./read.js";
@@ -13,7 +12,6 @@ export { setUploadFunction } from "./attach.js";
 
 export function createMomTools(
 	executor: Executor,
-	hostWorkspaceDir?: string,
 	guardWorkspaceDir?: string,
 	settings?: MotherSettingsManager,
 ): AgentTool<any>[] {
@@ -38,8 +36,5 @@ export function createMomTools(
 		createWriteTool(executor, guardWorkspaceDir),
 		guardWorkspaceDir ? createAttachTool(guardWorkspaceDir) : attachTool,
 	];
-	if (hostWorkspaceDir) {
-		tools.push(createClaudeTool(hostWorkspaceDir, settings));
-	}
 	return tools;
 }

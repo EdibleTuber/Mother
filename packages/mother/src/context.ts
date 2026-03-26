@@ -217,9 +217,6 @@ export interface MotherDiscordSettings {
 export interface MotherToolsSettings {
 	bashMaxLines: number;
 	bashMaxBytes: number;
-	claudeModel: string;
-	claudeMaxTurns: number;
-	claudeTimeout: number;
 }
 
 export interface MotherEventsSettings {
@@ -258,9 +255,6 @@ const DEFAULT_DISCORD: MotherDiscordSettings = {
 const DEFAULT_TOOLS: MotherToolsSettings = {
 	bashMaxLines: 2000,
 	bashMaxBytes: 50 * 1024,
-	claudeModel: "claude-sonnet-4-5-20250929",
-	claudeMaxTurns: 20,
-	claudeTimeout: 600,
 };
 
 const DEFAULT_EVENTS: MotherEventsSettings = {

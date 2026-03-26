@@ -45,7 +45,6 @@ Discord ──> Pi 5 (Mother) ──> Ollama (192.168.1.14)
 | `tools/edit.ts` | Surgical text replacement with diff output |
 | `tools/attach.ts` | File upload to Discord |
 | `tools/guard.ts` | Path and command security guards for host mode |
-| `tools/claude.ts` | Claude Code CLI delegation for complex tasks |
 | `tools/truncate.ts` | Shared output truncation utilities |
 
 ### 1.5 Capabilities
@@ -56,7 +55,6 @@ Discord ──> Pi 5 (Mother) ──> Ollama (192.168.1.14)
 - `write` - Create/overwrite files
 - `edit` - Find-and-replace text in files
 - `attach` - Upload files to Discord
-- `claude` - Delegate complex tasks to Claude Code CLI (Sonnet/Opus)
 
 **Memory:**
 - `<workspace>/MEMORY.md` - Global workspace memory (max 1500 chars, injected every turn)

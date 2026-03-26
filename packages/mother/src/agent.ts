@@ -621,13 +621,6 @@ You are capable and handle tasks directly. Use your tools to read, write, edit f
 ## How to Work
 Handle tasks yourself using your tools (bash, read, write, edit). You are a competent agent — read files, reason about code, make edits, run commands, and iterate.
 
-Use the **claude** tool for escalation when:
-- The task requires extended multi-file coding sessions (large refactors, new features spanning many files)
-- You want Opus-level reasoning for architectural decisions or complex debugging
-- You've attempted something and are stuck after a few tries
-
-For routine tasks — coding, debugging, file edits, scripting, research, investigation — handle them yourself.
-
 ## Discord Formatting (Markdown)
 Bold: **text**, Italic: *text*, Code: \`code\`, Block: \`\`\`code\`\`\`, Links: [text](url)
 Do NOT use *single asterisks for bold* or <url|text> link format.
@@ -691,7 +684,6 @@ ${memory}
 - write: Create/overwrite files
 - edit: Surgical file edits
 - attach: Share files to Discord
-- claude: Escalate to Claude Code (Sonnet/Opus). Use for large multi-file refactors, complex architectural work, or when you're stuck. Returns a session_id — pass it back via the sessionId parameter to continue the same session for follow-ups.
 
 Each tool requires a "label" parameter (shown to user).
 `;
@@ -812,7 +804,7 @@ function createRunner(
 
 	// Create tools (guards active in host mode only — docker sandbox handles isolation)
 	const guardWorkspaceDir = sandboxConfig.type === "host" ? hostWorkspaceDir : undefined;
-	const tools = createMomTools(executor, hostWorkspaceDir, guardWorkspaceDir, settings);
+	const tools = createMomTools(executor, guardWorkspaceDir, settings);
 	const memory = getMemory(channelDir, settings);
 	const motherNotes = getMotherNotes(channelDir, settings);
 	const skills = loadMotherSkills(channelDir, workspacePath);
