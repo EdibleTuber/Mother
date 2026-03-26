@@ -27,25 +27,23 @@ import { createMomTools, setUploadFunction } from "./tools/index.js";
 // Model configuration
 // ============================================================================
 
-const MOTHER_MODEL_PROVIDER = process.env.MOTHER_MODEL_PROVIDER || "anthropic";
-const MOTHER_MODEL_ID = process.env.MOTHER_MODEL_ID || "claude-haiku-4-5";
-const MOTHER_OLLAMA_URL = process.env.MOTHER_OLLAMA_URL || "http://192.168.1.41:11434/v1";
-const MOTHER_MODELS_JSON = process.env.MOTHER_MODELS_JSON || join(homedir(), ".pi", "mother", "models.json");
+function resolveModel(settings: MotherSettingsManager): any {
+	const provider = settings.getDefaultProvider();
+	const modelId = settings.getDefaultModel();
+	const ollamaUrl = settings.getOllamaUrl();
+	const modelsJsonPath = settings.getModelsJsonPath();
 
-function resolveModel(): any {
 	// Check for custom models.json first
-	const modelsPaths = [MOTHER_MODELS_JSON, join(homedir(), ".pi", "agent", "models.json")];
+	const modelsPaths = [modelsJsonPath, join(homedir(), ".pi", "agent", "models.json")];
 
 	for (const modelsPath of modelsPaths) {
 		if (existsSync(modelsPath)) {
 			try {
 				const modelsConfig = JSON.parse(readFileSync(modelsPath, "utf-8"));
 				if (Array.isArray(modelsConfig)) {
-					const match = modelsConfig.find(
-						(m: any) => m.provider === MOTHER_MODEL_PROVIDER && m.id === MOTHER_MODEL_ID,
-					);
+					const match = modelsConfig.find((m: any) => m.provider === provider && m.id === modelId);
 					if (match) {
-						log.logInfo(`Loaded model config from ${modelsPath}: ${MOTHER_MODEL_PROVIDER}/${MOTHER_MODEL_ID}`);
+						log.logInfo(`Loaded model config from ${modelsPath}: ${provider}/${modelId}`);
 						return match;
 					}
 				}
@@ -57,7 +55,7 @@ function resolveModel(): any {
 
 	// Try built-in model registry (returns undefined if not found, doesn't throw)
 	try {
-		const builtIn = getModel(MOTHER_MODEL_PROVIDER as any, MOTHER_MODEL_ID as any);
+		const builtIn = getModel(provider as any, modelId as any);
 		if (builtIn) {
 			return builtIn;
 		}
@@ -66,18 +64,18 @@ function resolveModel(): any {
 	}
 
 	// Fallback: construct model for ollama provider
-	log.logInfo(`Using ollama model: ${MOTHER_MODEL_ID} at ${MOTHER_OLLAMA_URL}`);
+	log.logInfo(`Using ollama model: ${modelId} at ${ollamaUrl}`);
 	return {
-		id: MOTHER_MODEL_ID,
-		name: MOTHER_MODEL_ID,
+		id: modelId,
+		name: modelId,
 		api: "openai-completions",
-		provider: MOTHER_MODEL_PROVIDER,
-		baseUrl: MOTHER_OLLAMA_URL,
+		provider,
+		baseUrl: ollamaUrl,
 		reasoning: false,
 		input: ["text"] as ("text" | "image")[],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 128000,
-		maxTokens: 32768,
+		contextWindow: settings.getContextWindow(),
+		maxTokens: settings.getMaxTokens(),
 		// Mother-specific: thinking output filtering
 		thinkingInText: false, // qwen3 uses proper thinking blocks, not text-prefixed thinking
 		intermediateToThread: true, // Route intermediate messages (stopReason="toolUse") to thread only
@@ -91,17 +89,19 @@ function resolveModel(): any {
  * Check if ollama server is reachable.
  * Returns error message if unreachable, undefined if ok.
  */
-async function checkOllamaHealth(): Promise<string | undefined> {
-	if (MOTHER_MODEL_PROVIDER !== "ollama") {
+async function checkOllamaHealth(settings: MotherSettingsManager): Promise<string | undefined> {
+	if (settings.getDefaultProvider() !== "ollama") {
 		return undefined;
 	}
+
+	const ollamaUrl = settings.getOllamaUrl();
 
 	try {
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), 5000);
 
 		// Ollama v1 API has a /models endpoint we can ping
-		const baseUrl = MOTHER_OLLAMA_URL.replace(/\/v1\/?$/, "");
+		const baseUrl = ollamaUrl.replace(/\/v1\/?$/, "");
 		const response = await fetch(`${baseUrl}/api/tags`, {
 			signal: controller.signal,
 		});
@@ -113,9 +113,9 @@ async function checkOllamaHealth(): Promise<string | undefined> {
 		return undefined;
 	} catch (err) {
 		if (err instanceof Error && err.name === "AbortError") {
-			return `Ollama server at ${MOTHER_OLLAMA_URL} timed out`;
+			return `Ollama server at ${ollamaUrl} timed out`;
 		}
-		return `Cannot reach ollama at ${MOTHER_OLLAMA_URL}: ${err instanceof Error ? err.message : String(err)}`;
+		return `Cannot reach ollama at ${ollamaUrl}: ${err instanceof Error ? err.message : String(err)}`;
 	}
 }
 
@@ -151,10 +151,9 @@ function getImageMimeType(filename: string): string | undefined {
 	return IMAGE_MIME_TYPES[filename.toLowerCase().split(".").pop() || ""];
 }
 
-function getMemory(channelDir: string): string {
+function getMemory(channelDir: string, settings: MotherSettingsManager): string {
 	const parts: string[] = [];
-	const MAX_GLOBAL_CHARS = 1500;
-	const MAX_CHANNEL_CHARS = 1000;
+	const { globalMaxChars, channelMaxChars } = settings.getMemorySettings();
 
 	// Read workspace-level memory (shared across all channels)
 	const workspaceMemoryPath = join(channelDir, "..", "MEMORY.md");
@@ -162,9 +161,9 @@ function getMemory(channelDir: string): string {
 		try {
 			let content = readFileSync(workspaceMemoryPath, "utf-8").trim();
 			if (content) {
-				if (content.length > MAX_GLOBAL_CHARS) {
+				if (content.length > globalMaxChars) {
 					content =
-						content.substring(0, MAX_GLOBAL_CHARS) +
+						content.substring(0, globalMaxChars) +
 						"\n[Global memory truncated — clean up MEMORY.md to remove outdated entries]";
 				}
 				parts.push(`### Global Workspace Memory\n${content}`);
@@ -180,9 +179,9 @@ function getMemory(channelDir: string): string {
 		try {
 			let content = readFileSync(channelMemoryPath, "utf-8").trim();
 			if (content) {
-				if (content.length > MAX_CHANNEL_CHARS) {
+				if (content.length > channelMaxChars) {
 					content =
-						content.substring(0, MAX_CHANNEL_CHARS) +
+						content.substring(0, channelMaxChars) +
 						"\n[Channel memory truncated — clean up MEMORY.md to remove outdated entries]";
 				}
 				parts.push(`### Channel-Specific Memory\n${content}`);
@@ -199,15 +198,15 @@ function getMemory(channelDir: string): string {
 	return parts.join("\n\n");
 }
 
-function getMotherNotes(channelDir: string): string {
+function getMotherNotes(channelDir: string, settings: MotherSettingsManager): string {
 	const motherPath = join(channelDir, "..", "MOTHER.md");
 	if (existsSync(motherPath)) {
 		try {
 			let content = readFileSync(motherPath, "utf-8").trim();
 			if (content) {
-				const MAX_MOTHER_CHARS = 3000;
-				if (content.length > MAX_MOTHER_CHARS) {
-					content = `${content.substring(0, MAX_MOTHER_CHARS)}\n[Truncated — keep MOTHER.md concise]`;
+				const { motherMaxChars } = settings.getMemorySettings();
+				if (content.length > motherMaxChars) {
+					content = `${content.substring(0, motherMaxChars)}\n[Truncated — keep MOTHER.md concise]`;
 				}
 				return content;
 			}
@@ -435,7 +434,8 @@ async function bootstrapWorkspace(
  * Generate a file tree of the workspace for inclusion in the system prompt.
  * Gives the model awareness of existing files without needing tool calls.
  */
-function generateWorkspaceTree(hostDir: string, displayPath: string, maxDepth = 4, maxEntries = 150): string {
+function generateWorkspaceTree(hostDir: string, displayPath: string, settings: MotherSettingsManager): string {
+	const { fileTreeMaxDepth: maxDepth, fileTreeMaxEntries: maxEntries } = settings.getContextSettings();
 	const lines: string[] = [`${displayPath}/`];
 	let count = 0;
 
@@ -498,8 +498,9 @@ function generateWorkspaceTree(hostDir: string, displayPath: string, maxDepth = 
 function trimContextByTurns(
 	messages: AgentMessage[],
 	channelId: string,
+	settings: MotherSettingsManager,
 ): { messages: AgentMessage[]; droppedTurns: number; summary: string } {
-	const MAX_TURNS = 10;
+	const MAX_TURNS = settings.getContextSettings().maxTurns;
 
 	// Split messages into turns: each turn starts with a user message
 	const turns: AgentMessage[][] = [];
@@ -758,18 +759,28 @@ function formatToolArgsForDiscord(_toolName: string, args: Record<string, unknow
 // Cache runners per channel
 const channelRunners = new Map<string, AgentRunner>();
 
-export function getOrCreateRunner(sandboxConfig: SandboxConfig, channelId: string, channelDir: string): AgentRunner {
+export function getOrCreateRunner(
+	sandboxConfig: SandboxConfig,
+	channelId: string,
+	channelDir: string,
+	settings: MotherSettingsManager,
+): AgentRunner {
 	const existing = channelRunners.get(channelId);
 	if (existing) return existing;
 
-	const runner = createRunner(sandboxConfig, channelId, channelDir);
+	const runner = createRunner(sandboxConfig, channelId, channelDir, settings);
 	channelRunners.set(channelId, runner);
 	return runner;
 }
 
-function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDir: string): AgentRunner {
+function createRunner(
+	sandboxConfig: SandboxConfig,
+	channelId: string,
+	channelDir: string,
+	settings: MotherSettingsManager,
+): AgentRunner {
 	// Resolve model at runner creation time (not module load time)
-	const model = resolveModel();
+	const model = resolveModel(settings);
 	// Apply Mother defaults for Discord routing (read by event handlers)
 	if ((model as any).intermediateToThread === undefined) {
 		(model as any).intermediateToThread = true;
@@ -789,11 +800,11 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 
 	// Create tools (guards active in host mode only — docker sandbox handles isolation)
 	const guardWorkspaceDir = sandboxConfig.type === "host" ? hostWorkspaceDir : undefined;
-	const tools = createMomTools(executor, hostWorkspaceDir, guardWorkspaceDir);
-	const memory = getMemory(channelDir);
-	const motherNotes = getMotherNotes(channelDir);
+	const tools = createMomTools(executor, hostWorkspaceDir, guardWorkspaceDir, settings);
+	const memory = getMemory(channelDir, settings);
+	const motherNotes = getMotherNotes(channelDir, settings);
 	const skills = loadMotherSkills(channelDir, workspacePath);
-	const fileTree = generateWorkspaceTree(hostWorkspaceDir, workspacePath);
+	const fileTree = generateWorkspaceTree(hostWorkspaceDir, workspacePath, settings);
 	const systemPrompt = buildSystemPrompt(
 		workspacePath,
 		channelId,
@@ -1058,7 +1069,7 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 			_pendingMessages?: PendingMessage[],
 		): Promise<{ stopReason: string; errorMessage?: string }> {
 			// Check ollama health before proceeding
-			const healthError = await checkOllamaHealth();
+			const healthError = await checkOllamaHealth(settings);
 			if (healthError) {
 				log.logWarning("Ollama health check failed", healthError);
 				try {
@@ -1083,7 +1094,7 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 			// Reload messages from context.jsonl
 			const reloadedSession = sessionManager.buildSessionContext();
 			if (reloadedSession.messages.length > 0) {
-				const trimmed = trimContextByTurns(reloadedSession.messages, channelId);
+				const trimmed = trimContextByTurns(reloadedSession.messages, channelId, settings);
 				agent.replaceMessages(trimmed.messages);
 				log.logInfo(`[${channelId}] Reloaded ${trimmed.messages.length} messages from context`);
 				if (trimmed.droppedTurns > 0) {
@@ -1092,10 +1103,10 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 			}
 
 			// Update system prompt with fresh memory, channel/user info, and skills
-			const memory = getMemory(channelDir);
-			const motherNotes = getMotherNotes(channelDir);
+			const memory = getMemory(channelDir, settings);
+			const motherNotes = getMotherNotes(channelDir, settings);
 			const skills = loadMotherSkills(channelDir, workspacePath);
-			const fileTree = generateWorkspaceTree(hostWorkspaceDir, workspacePath);
+			const fileTree = generateWorkspaceTree(hostWorkspaceDir, workspacePath, settings);
 			const systemPrompt = buildSystemPrompt(
 				workspacePath,
 				channelId,
@@ -1262,7 +1273,7 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 
 			// Log usage summary with context info
 			const totalCost = runState.totalUsage.cost.total;
-			const isLocalModel = totalCost === 0 && MOTHER_MODEL_PROVIDER === "ollama";
+			const isLocalModel = totalCost === 0 && settings.getDefaultProvider() === "ollama";
 
 			if (totalCost > 0 || isLocalModel) {
 				const messages = session.messages;
