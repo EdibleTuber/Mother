@@ -13,6 +13,7 @@
 import type { UserMessage } from "@mariozechner/pi-ai";
 import type { SessionManager, SessionMessageEntry } from "@mariozechner/pi-coding-agent";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { homedir } from "os";
 import { dirname, join } from "path";
 
 // ============================================================================
@@ -163,6 +164,15 @@ export interface MotherSettings {
 	defaultThinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
 	compaction?: Partial<MotherCompactionSettings>;
 	retry?: Partial<MotherRetrySettings>;
+	ollamaUrl?: string;
+	modelsJsonPath?: string;
+	contextWindow?: number;
+	maxTokens?: number;
+	memory?: Partial<MotherMemorySettings>;
+	context?: Partial<MotherContextSettings>;
+	discord?: Partial<MotherDiscordSettings>;
+	tools?: Partial<MotherToolsSettings>;
+	events?: Partial<MotherEventsSettings>;
 }
 
 const DEFAULT_COMPACTION: MotherCompactionSettings = {
@@ -175,6 +185,88 @@ const DEFAULT_RETRY: MotherRetrySettings = {
 	enabled: true,
 	maxRetries: 3,
 	baseDelayMs: 2000,
+};
+
+export interface MotherModelSettings {
+	provider: string;
+	modelId: string;
+	ollamaUrl: string;
+	modelsJsonPath: string;
+	contextWindow: number;
+	maxTokens: number;
+}
+
+export interface MotherMemorySettings {
+	globalMaxChars: number;
+	channelMaxChars: number;
+	motherMaxChars: number;
+}
+
+export interface MotherContextSettings {
+	maxTurns: number;
+	fileTreeMaxDepth: number;
+	fileTreeMaxEntries: number;
+}
+
+export interface MotherDiscordSettings {
+	editRateLimit: number;
+	maxQueuedEvents: number;
+	threadName: string;
+}
+
+export interface MotherToolsSettings {
+	bashMaxLines: number;
+	bashMaxBytes: number;
+	claudeModel: string;
+	claudeMaxTurns: number;
+	claudeTimeout: number;
+}
+
+export interface MotherEventsSettings {
+	debounceMs: number;
+	maxRetries: number;
+	retryBaseMs: number;
+}
+
+const DEFAULT_MODEL: MotherModelSettings = {
+	provider: "ollama",
+	modelId: "Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M",
+	ollamaUrl: "http://192.168.1.14:11434/v1",
+	modelsJsonPath: "~/.pi/mother/models.json",
+	contextWindow: 128000,
+	maxTokens: 32768,
+};
+
+const DEFAULT_MEMORY: MotherMemorySettings = {
+	globalMaxChars: 1500,
+	channelMaxChars: 1000,
+	motherMaxChars: 3000,
+};
+
+const DEFAULT_CONTEXT: MotherContextSettings = {
+	maxTurns: 10,
+	fileTreeMaxDepth: 4,
+	fileTreeMaxEntries: 150,
+};
+
+const DEFAULT_DISCORD: MotherDiscordSettings = {
+	editRateLimit: 1000,
+	maxQueuedEvents: 5,
+	threadName: "Details",
+};
+
+const DEFAULT_TOOLS: MotherToolsSettings = {
+	bashMaxLines: 2000,
+	bashMaxBytes: 50 * 1024,
+	claudeModel: "claude-sonnet-4-5-20250929",
+	claudeMaxTurns: 20,
+	claudeTimeout: 600,
+};
+
+const DEFAULT_EVENTS: MotherEventsSettings = {
+	debounceMs: 100,
+	maxRetries: 3,
+	retryBaseMs: 100,
 };
 
 /**
@@ -247,12 +339,49 @@ export class MotherSettingsManager {
 		this.save();
 	}
 
-	getDefaultModel(): string | undefined {
-		return this.settings.defaultModel || process.env.MOTHER_MODEL_ID || "qwen3:30b-a3b";
+	getDefaultModel(): string {
+		return this.settings.defaultModel || process.env.MOTHER_MODEL_ID || DEFAULT_MODEL.modelId;
 	}
 
-	getDefaultProvider(): string | undefined {
-		return this.settings.defaultProvider || process.env.MOTHER_MODEL_PROVIDER || "ollama";
+	getDefaultProvider(): string {
+		return this.settings.defaultProvider || process.env.MOTHER_MODEL_PROVIDER || DEFAULT_MODEL.provider;
+	}
+
+	getOllamaUrl(): string {
+		return this.settings.ollamaUrl || process.env.MOTHER_OLLAMA_URL || DEFAULT_MODEL.ollamaUrl;
+	}
+
+	getModelsJsonPath(): string {
+		const raw = this.settings.modelsJsonPath || process.env.MOTHER_MODELS_JSON || DEFAULT_MODEL.modelsJsonPath;
+		return raw.startsWith("~") ? raw.replace("~", homedir()) : raw;
+	}
+
+	getContextWindow(): number {
+		return this.settings.contextWindow ?? DEFAULT_MODEL.contextWindow;
+	}
+
+	getMaxTokens(): number {
+		return this.settings.maxTokens ?? DEFAULT_MODEL.maxTokens;
+	}
+
+	getMemorySettings(): MotherMemorySettings {
+		return { ...DEFAULT_MEMORY, ...this.settings.memory };
+	}
+
+	getContextSettings(): MotherContextSettings {
+		return { ...DEFAULT_CONTEXT, ...this.settings.context };
+	}
+
+	getDiscordSettings(): MotherDiscordSettings {
+		return { ...DEFAULT_DISCORD, ...this.settings.discord };
+	}
+
+	getToolsSettings(): MotherToolsSettings {
+		return { ...DEFAULT_TOOLS, ...this.settings.tools };
+	}
+
+	getEventsSettings(): MotherEventsSettings {
+		return { ...DEFAULT_EVENTS, ...this.settings.events };
 	}
 
 	setDefaultModelAndProvider(provider: string, modelId: string): void {
