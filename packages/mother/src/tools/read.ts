@@ -1,3 +1,11 @@
+/**
+ * File reading tool for Mother.
+ *
+ * Reads text files with head-truncation (keeps the beginning) and supports
+ * offset/limit for paging through large files. Image files (jpg, png, gif,
+ * webp) are read as base64 and returned as image content blocks so the LLM
+ * can see them directly.
+ */
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";

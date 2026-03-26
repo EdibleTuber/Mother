@@ -1,3 +1,10 @@
+/**
+ * File writing tool for Mother.
+ *
+ * Creates or overwrites files via the sandbox executor. Automatically creates
+ * parent directories. Uses printf + shell escaping to handle content with
+ * special characters safely.
+ */
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { Executor } from "../sandbox.js";

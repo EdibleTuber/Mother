@@ -1,3 +1,11 @@
+/**
+ * Bash command execution tool for Mother.
+ *
+ * Runs shell commands via the sandbox executor and returns stdout/stderr.
+ * Output is truncated (tail-kept) to stay within the LLM's context budget.
+ * When truncation occurs, full output is saved to a temp file so the model
+ * can read specific sections if needed.
+ */
 import { randomBytes } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { tmpdir } from "node:os";

@@ -1,3 +1,15 @@
+/**
+ * Security guards for Mother's tool execution in host mode.
+ *
+ * Two independent guards protect the host when running without Docker:
+ * - Path guard: restricts file read/write/edit to the workspace dir + /tmp
+ * - Command guard: only allows a curated set of commands, blocks dangerous
+ *   patterns (rm -rf /, fork bombs), and splits compound shell commands to
+ *   check each segment independently.
+ *
+ * In Docker mode these guards are bypassed -- the container itself is the
+ * sandbox boundary.
+ */
 import { normalize, resolve } from "node:path";
 
 export interface GuardResult {

@@ -1,3 +1,12 @@
+/**
+ * Claude Code delegation tool for Mother.
+ *
+ * Spawns the `claude` CLI as a subprocess to handle complex tasks that exceed
+ * the local model's capabilities. Supports session continuations (pass back a
+ * session_id to resume prior context). The 10-minute default timeout and 20-turn
+ * limit prevent runaway API spend. Output is truncated to fit the local model's
+ * context window.
+ */
 import { execFile } from "node:child_process";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";

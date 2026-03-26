@@ -1,3 +1,12 @@
+/**
+ * File-based event scheduler for Mother.
+ *
+ * Watches a directory for JSON event files and triggers them as Discord messages.
+ * Three event types: immediate (fire on file creation), one-shot (fire at a
+ * specific time), and periodic (cron-scheduled). Immediate and one-shot events
+ * auto-delete after firing. Uses filesystem watching with debouncing to handle
+ * rapid file creation without flooding the event queue.
+ */
 import { Cron } from "croner";
 import { existsSync, type FSWatcher, mkdirSync, readdirSync, statSync, unlinkSync, watch } from "fs";
 import { readFile } from "fs/promises";

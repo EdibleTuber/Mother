@@ -1,3 +1,11 @@
+/**
+ * Structured console logging for Mother's bot process.
+ *
+ * Provides color-coded, timestamped output for the operator watching the
+ * terminal on the Pi. Each log function targets a specific event type
+ * (user message, tool start/success/error, response streaming, usage
+ * summary) with consistent formatting and indentation.
+ */
 import chalk from "chalk";
 
 export interface LogContext {

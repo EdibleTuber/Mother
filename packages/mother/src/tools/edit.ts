@@ -1,3 +1,10 @@
+/**
+ * Surgical file editing tool for Mother.
+ *
+ * Performs exact find-and-replace on files. Requires the oldText to match
+ * exactly once (enforces uniqueness to prevent unintended edits). Returns a
+ * unified diff so the LLM can verify its edit landed correctly.
+ */
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import * as Diff from "diff";

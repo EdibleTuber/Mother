@@ -6,12 +6,12 @@
 
 Mother is a Discord bot that delegates messages to an LLM-powered coding agent. She runs on a Raspberry Pi 5, listens to Discord, and uses Ollama (on a remote inference server) for LLM reasoning. She can execute shell commands, read/write/edit files, upload attachments, schedule events, and maintain persistent memory across conversations.
 
-Mother was ported from `packages/mom` (a Slack bot) to Discord.
+**Repository:** [EdibleTuber/Mother](https://github.com/EdibleTuber/Mother) (fork of [badlogic/pi-mono](https://github.com/badlogic/pi-mono)). Mother was ported from `packages/mom` (a Slack bot) to Discord.
 
 ### 1.2 Architecture
 
 ```
-Discord ──> Pi 5 (Mother) ──> Ollama (192.168.1.41)
+Discord ──> Pi 5 (Mother) ──> Ollama (192.168.1.14)
                 │
                 ├── Per-channel agent sessions
                 ├── Event scheduler (cron, one-shot, immediate)
@@ -44,7 +44,9 @@ Discord ──> Pi 5 (Mother) ──> Ollama (192.168.1.41)
 | `tools/write.ts` | File creation/overwrite |
 | `tools/edit.ts` | Surgical text replacement with diff output |
 | `tools/attach.ts` | File upload to Discord |
-| `tools/truncate.ts` | Output truncation utilities |
+| `tools/guard.ts` | Path and command security guards for host mode |
+| `tools/claude.ts` | Claude Code CLI delegation for complex tasks |
+| `tools/truncate.ts` | Shared output truncation utilities |
 
 ### 1.5 Capabilities
 
@@ -54,6 +56,7 @@ Discord ──> Pi 5 (Mother) ──> Ollama (192.168.1.41)
 - `write` - Create/overwrite files
 - `edit` - Find-and-replace text in files
 - `attach` - Upload files to Discord
+- `claude` - Delegate complex tasks to Claude Code CLI (Sonnet/Opus)
 
 **Memory:**
 - `<workspace>/MEMORY.md` - Global workspace memory (max 1500 chars, injected every turn)
@@ -101,22 +104,29 @@ Discord ──> Pi 5 (Mother) ──> Ollama (192.168.1.41)
 
 ### 1.6 Configuration
 
-**Environment Variables:**
+**Environment Variables (secrets and security -- not in settings.json):**
 | Variable | Default | Required |
 |----------|---------|----------|
 | `DISCORD_BOT_TOKEN` | - | Yes (Discord mode) |
 | `DISCORD_GUILD_ID` | - | Yes (Discord mode) |
-| `MOTHER_MODEL_PROVIDER` | `ollama` | No |
-| `MOTHER_MODEL_ID` | `qwen3:30b-a3b` | No |
-| `MOTHER_OLLAMA_URL` | `http://192.168.1.41:11434/v1` | No |
-| `MOTHER_MODELS_JSON` | `~/.pi/mother/models.json` | No |
+| `MOTHER_ALLOWED_USERS` | - | No |
+| `MOTHER_ALLOWED_PATHS` | workspace + /tmp | No |
+| `MOTHER_ALLOWED_COMMANDS` | (see guard.ts) | No |
+
+**settings.json (workspace-level, all optional with defaults):**
+
+All other configuration lives in `{workspaceDir}/settings.json`. See `docs/mother-overview.md` for the full reference with all fields and defaults.
+
+Key settings: `defaultProvider`, `defaultModel`, `ollamaUrl`, `memory.*`, `context.*`, `discord.*`, `tools.*`, `events.*`, `compaction.*`, `retry.*`.
+
+Environment variables `MOTHER_MODEL_PROVIDER`, `MOTHER_MODEL_ID`, `MOTHER_OLLAMA_URL`, and `MOTHER_MODELS_JSON` can still override model settings for deployment flexibility.
 
 ### 1.7 Known Limitations
 
 - **Single-threaded per channel** - One task at a time per channel, queued
 - **No sub-task delegation** - Mother does everything herself, no parallel work
 - **Host sandbox is unrestricted** - No isolation; a bad command can damage the host
-- **Model quality** - Local model (qwen3:30b-a3b) acts as dispatcher, delegating complex work to Claude Code
+- **Model quality** - Local model (Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M) acts as dispatcher, delegating complex work to Claude Code
 - **No internet tools** - No web search, no HTTP requests (only via bash + curl)
 - **Discord rate limits** - Message edits throttled, long tool chains can be slow to display
 - **No vector search** - Memory search uses grep over flat files. Vector search (e.g., `nomic-embed-text` on the remote Ollama server) is viable since the Pi doesn't run the LLM locally, but not needed at current scale. Revisit if daily logs grow beyond what grep can efficiently search.
@@ -149,7 +159,7 @@ Discord ──> Pi 5 (Mother)
               │
               │  SSH / Docker API
               ▼
-        Inference Server (192.168.1.41)
+        Inference Server (192.168.1.14)
         ├── Ollama (LLM inference)
         ├── chick-1 (container) ── task A
         ├── chick-2 (container) ── task B
@@ -176,7 +186,7 @@ A chick is a **disposable Docker container** running a headless agent loop:
 
 ### 2.4 Resource Budget
 
-**Inference Server (192.168.1.41):**
+**Inference Server (192.168.1.14):**
 - 32GB RAM, Tesla P40 (24GB VRAM), Ubuntu headless
 - Ollama: ~4-8GB VRAM (model dependent), ~2GB system RAM
 - Remaining: ~22GB system RAM for containers

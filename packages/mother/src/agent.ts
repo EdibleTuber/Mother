@@ -1,3 +1,11 @@
+/**
+ * Core agent orchestration for Mother.
+ *
+ * Handles model resolution (models.json -> built-in registry -> ollama fallback),
+ * builds the system prompt (memory, workspace tree, Discord IDs, skills), manages
+ * per-channel agent sessions, and processes LLM events (text, tool calls, thinking,
+ * usage) into Discord responses.
+ */
 import { Agent, type AgentEvent, type AgentMessage } from "@mariozechner/pi-agent-core";
 import { getModel, type ImageContent, type UserMessage } from "@mariozechner/pi-ai";
 import {
@@ -98,6 +106,7 @@ async function checkOllamaHealth(settings: MotherSettingsManager): Promise<strin
 
 	try {
 		const controller = new AbortController();
+		// 5s timeout: health check should be fast; if Ollama is down we fail quickly rather than hang the first user message
 		const timeout = setTimeout(() => controller.abort(), 5000);
 
 		// Ollama v1 API has a /models endpoint we can ping
@@ -439,6 +448,7 @@ function generateWorkspaceTree(hostDir: string, displayPath: string, settings: M
 	const lines: string[] = [`${displayPath}/`];
 	let count = 0;
 
+	// Skip noisy/large entries that waste tokens in the system prompt
 	const SKIP = new Set(["node_modules", "attachments", "log.jsonl", "context.jsonl", "last_prompt.jsonl"]);
 
 	function walk(dir: string, prefix: string, depth: number) {
@@ -491,6 +501,8 @@ function generateWorkspaceTree(hostDir: string, displayPath: string, settings: M
 	return lines.join("\n");
 }
 
+// Coarse context guard at the turn level. The model's own compaction handles fine-grained token management;
+// this prevents the message array from growing unbounded between compactions.
 /**
  * Trim context by logical turns (user message + assistant/toolResult responses).
  * Keeps the most recent MAX_TURNS turns and generates a one-line summary of the last dropped user message.

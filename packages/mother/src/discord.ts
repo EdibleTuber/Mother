@@ -1,3 +1,10 @@
+/**
+ * Discord client and message routing for Mother.
+ *
+ * Manages the discord.js client, per-channel message queues (one task at a time
+ * per channel), attachment downloads, and rate-limited message editing. Queues
+ * prevent concurrent agent runs on the same channel which would corrupt state.
+ */
 import {
 	AttachmentBuilder,
 	ChannelType,
@@ -180,7 +187,9 @@ export class DiscordBot {
 				GatewayIntentBits.DirectMessages,
 			],
 			partials: [Partials.Channel, Partials.Message],
-			// Memory optimization for Pi 5
+			// Memory optimization: Discord.js caches all messages and users by default.
+			// On a Pi 5 with limited RAM, sweep old messages (>10min) and inactive users
+			// periodically to prevent unbounded memory growth during long-running sessions.
 			sweepers: {
 				messages: { interval: 300, lifetime: 600 },
 				users: { interval: 300, filter: () => (user) => user.id !== this.botUserId },

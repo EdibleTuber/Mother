@@ -1,3 +1,10 @@
+/**
+ * Discord file attachment tool for Mother.
+ *
+ * Uploads files to the current Discord channel. The actual upload function is
+ * injected at runtime via setUploadFunction() -- this decouples the tool from
+ * the Discord client so it can work in CLI mode too (where uploads are no-ops).
+ */
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import { basename, resolve as resolvePath } from "path";
