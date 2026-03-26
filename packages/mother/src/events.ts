@@ -2,6 +2,7 @@ import { Cron } from "croner";
 import { existsSync, type FSWatcher, mkdirSync, readdirSync, statSync, unlinkSync, watch } from "fs";
 import { readFile } from "fs/promises";
 import { join } from "path";
+import type { MotherSettingsManager } from "./context.js";
 import type { DiscordBot, DiscordEvent } from "./discord.js";
 import * as log from "./log.js";
 
@@ -36,10 +37,6 @@ export type MotherEvent = ImmediateEvent | OneShotEvent | PeriodicEvent;
 // EventsWatcher
 // ============================================================================
 
-const DEBOUNCE_MS = 100;
-const MAX_RETRIES = 3;
-const RETRY_BASE_MS = 100;
-
 export class EventsWatcher {
 	private timers: Map<string, NodeJS.Timeout> = new Map();
 	private crons: Map<string, Cron> = new Map();
@@ -47,12 +44,20 @@ export class EventsWatcher {
 	private startTime: number;
 	private watcher: FSWatcher | null = null;
 	private knownFiles: Set<string> = new Set();
+	private debounceMs: number;
+	private maxRetries: number;
+	private retryBaseMs: number;
 
 	constructor(
 		private eventsDir: string,
 		private bot: DiscordBot,
+		settings?: MotherSettingsManager,
 	) {
 		this.startTime = Date.now();
+		const eventsConfig = settings?.getEventsSettings();
+		this.debounceMs = eventsConfig?.debounceMs ?? 100;
+		this.maxRetries = eventsConfig?.maxRetries ?? 3;
+		this.retryBaseMs = eventsConfig?.retryBaseMs ?? 100;
 	}
 
 	/**
@@ -120,7 +125,7 @@ export class EventsWatcher {
 			setTimeout(() => {
 				this.debounceTimers.delete(filename);
 				fn();
-			}, DEBOUNCE_MS),
+			}, this.debounceMs),
 		);
 	}
 
@@ -183,21 +188,21 @@ export class EventsWatcher {
 		let event: MotherEvent | null = null;
 		let lastError: Error | null = null;
 
-		for (let i = 0; i < MAX_RETRIES; i++) {
+		for (let i = 0; i < this.maxRetries; i++) {
 			try {
 				const content = await readFile(filePath, "utf-8");
 				event = this.parseEvent(content, filename);
 				break;
 			} catch (err) {
 				lastError = err instanceof Error ? err : new Error(String(err));
-				if (i < MAX_RETRIES - 1) {
-					await this.sleep(RETRY_BASE_MS * 2 ** i);
+				if (i < this.maxRetries - 1) {
+					await this.sleep(this.retryBaseMs * 2 ** i);
 				}
 			}
 		}
 
 		if (!event) {
-			log.logWarning(`Failed to parse event file after ${MAX_RETRIES} retries: ${filename}`, lastError?.message);
+			log.logWarning(`Failed to parse event file after ${this.maxRetries} retries: ${filename}`, lastError?.message);
 			this.deleteFile(filename);
 			return;
 		}
@@ -377,7 +382,11 @@ export class EventsWatcher {
 /**
  * Create and start an events watcher.
  */
-export function createEventsWatcher(workspaceDir: string, bot: DiscordBot): EventsWatcher {
+export function createEventsWatcher(
+	workspaceDir: string,
+	bot: DiscordBot,
+	settings?: MotherSettingsManager,
+): EventsWatcher {
 	const eventsDir = join(workspaceDir, "events");
-	return new EventsWatcher(eventsDir, bot);
+	return new EventsWatcher(eventsDir, bot, settings);
 }

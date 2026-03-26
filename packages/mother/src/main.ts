@@ -4,6 +4,7 @@ import type { Message } from "discord.js";
 import { join, resolve } from "path";
 import { createInterface } from "readline";
 import { type AgentRunner, getOrCreateRunner } from "./agent.js";
+import { MotherSettingsManager } from "./context.js";
 import { type DiscordBot, DiscordBot as DiscordBotClass, type DiscordEvent, type MotherHandler } from "./discord.js";
 import { createEventsWatcher } from "./events.js";
 import * as log from "./log.js";
@@ -64,6 +65,8 @@ if (!parsedArgs.workingDir) {
 
 const { workingDir, sandbox, cliMode } = parsedArgs;
 
+const settings = new MotherSettingsManager(workingDir);
+
 // In CLI mode, skip Discord token validation
 if (!cliMode) {
 	if (!DISCORD_BOT_TOKEN) {
@@ -93,7 +96,7 @@ if (cliMode) {
 	const channelId = "cli";
 	const channelDir = join(workingDir, channelId);
 	const store = new ChannelStore({ workingDir });
-	const runner = getOrCreateRunner(sandbox, channelId, channelDir);
+	const runner = getOrCreateRunner(sandbox, channelId, channelDir, settings);
 
 	// Create CLI context adapter
 	function createCliContext(text: string) {
@@ -208,7 +211,7 @@ function getState(channelId: string): ChannelState {
 		const channelDir = join(workingDir, channelId);
 		state = {
 			running: false,
-			runner: getOrCreateRunner(sandbox, channelId, channelDir),
+			runner: getOrCreateRunner(sandbox, channelId, channelDir, settings),
 			store: new ChannelStore({ workingDir }),
 			stopRequested: false,
 		};
@@ -417,10 +420,11 @@ const bot = new DiscordBotClass(handler, {
 	workingDir,
 	store: sharedStore,
 	allowedUsers,
+	settings,
 });
 
 // Start events watcher
-const eventsWatcher = createEventsWatcher(workingDir, bot);
+const eventsWatcher = createEventsWatcher(workingDir, bot, settings);
 eventsWatcher.start();
 
 // Handle shutdown

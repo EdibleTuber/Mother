@@ -10,6 +10,7 @@ import {
 } from "discord.js";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "fs";
 import { basename, join } from "path";
+import type { MotherSettingsManager } from "./context.js";
 import * as log from "./log.js";
 import type { Attachment, ChannelStore } from "./store.js";
 
@@ -118,7 +119,7 @@ class ChannelQueue {
 
 class RateLimiter {
 	private lastEditTime = 0;
-	private readonly minEditInterval = 1000; // 1 second between edits
+	constructor(private readonly minEditInterval: number = 1000) {}
 
 	async waitForEdit(): Promise<void> {
 		const now = Date.now();
@@ -147,8 +148,9 @@ export class DiscordBot {
 	private users = new Map<string, DiscordUser>();
 	private channelMap = new Map<string, DiscordChannel>();
 	private queues = new Map<string, ChannelQueue>();
-	private rateLimiter = new RateLimiter();
+	private rateLimiter: RateLimiter;
 	private allowedUsers: Set<string> | null = null;
+	private settings: MotherSettingsManager | null;
 
 	constructor(
 		handler: MotherHandler,
@@ -158,6 +160,7 @@ export class DiscordBot {
 			workingDir: string;
 			store: ChannelStore;
 			allowedUsers?: string[];
+			settings?: MotherSettingsManager;
 		},
 	) {
 		this.handler = handler;
@@ -165,6 +168,8 @@ export class DiscordBot {
 		this.store = config.store;
 		this.guildId = config.guildId;
 		this.allowedUsers = config.allowedUsers ? new Set(config.allowedUsers) : null;
+		this.settings = config.settings || null;
+		this.rateLimiter = new RateLimiter(config.settings?.getDiscordSettings().editRateLimit);
 
 		this.client = new Client({
 			intents: [
@@ -249,7 +254,8 @@ export class DiscordBot {
 	async postInThread(parentMessage: Message, text: string): Promise<Message> {
 		let thread = parentMessage.thread;
 		if (!thread) {
-			thread = await parentMessage.startThread({ name: "Details" });
+			const threadName = this.settings?.getDiscordSettings().threadName ?? "Details";
+			thread = await parentMessage.startThread({ name: threadName });
 		}
 		return await thread.send(text);
 	}
@@ -294,7 +300,8 @@ export class DiscordBot {
 
 	enqueueEvent(event: DiscordEvent): boolean {
 		const queue = this.getQueue(event.channel);
-		if (queue.size() >= 5) {
+		const maxQueued = this.settings?.getDiscordSettings().maxQueuedEvents ?? 5;
+		if (queue.size() >= maxQueued) {
 			log.logWarning(`Event queue full for ${event.channel}, discarding: ${event.text.substring(0, 50)}`);
 			return false;
 		}
