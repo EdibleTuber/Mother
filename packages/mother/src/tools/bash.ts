@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
+import type { MotherSettingsManager } from "../context.js";
 import type { Executor } from "../sandbox.js";
 import { guardCommand } from "./guard.js";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult, truncateTail } from "./truncate.js";
@@ -27,11 +28,15 @@ interface BashToolDetails {
 	fullOutputPath?: string;
 }
 
-export function createBashTool(executor: Executor): AgentTool<typeof bashSchema> {
+export function createBashTool(executor: Executor, settings?: MotherSettingsManager): AgentTool<typeof bashSchema> {
+	const toolsConfig = settings?.getToolsSettings();
+	const maxLines = toolsConfig?.bashMaxLines ?? DEFAULT_MAX_LINES;
+	const maxBytes = toolsConfig?.bashMaxBytes ?? DEFAULT_MAX_BYTES;
+
 	return {
 		name: "bash",
 		label: "bash",
-		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
+		description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${maxLines} lines or ${maxBytes / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
 		parameters: bashSchema,
 		execute: async (
 			_toolCallId: string,
@@ -56,7 +61,7 @@ export function createBashTool(executor: Executor): AgentTool<typeof bashSchema>
 			const totalBytes = Buffer.byteLength(output, "utf-8");
 
 			// Write to temp file if output exceeds limit
-			if (totalBytes > DEFAULT_MAX_BYTES) {
+			if (totalBytes > maxBytes) {
 				tempFilePath = getTempFilePath();
 				tempFileStream = createWriteStream(tempFilePath);
 				tempFileStream.write(output);
@@ -64,7 +69,7 @@ export function createBashTool(executor: Executor): AgentTool<typeof bashSchema>
 			}
 
 			// Apply tail truncation
-			const truncation = truncateTail(output);
+			const truncation = truncateTail(output, { maxLines, maxBytes });
 			let outputText = truncation.content || "(no output)";
 
 			// Build details with truncation info
@@ -87,7 +92,7 @@ export function createBashTool(executor: Executor): AgentTool<typeof bashSchema>
 				} else if (truncation.truncatedBy === "lines") {
 					outputText += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines}. Full output: ${tempFilePath}]`;
 				} else {
-					outputText += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${tempFilePath}]`;
+					outputText += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(maxBytes)} limit). Full output: ${tempFilePath}]`;
 				}
 			}
 

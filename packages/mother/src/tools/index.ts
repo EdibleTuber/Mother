@@ -1,4 +1,5 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { MotherSettingsManager } from "../context.js";
 import type { Executor } from "../sandbox.js";
 import { attachTool, createAttachTool } from "./attach.js";
 import { createBashTool } from "./bash.js";
@@ -14,6 +15,7 @@ export function createMomTools(
 	executor: Executor,
 	hostWorkspaceDir?: string,
 	guardWorkspaceDir?: string,
+	settings?: MotherSettingsManager,
 ): AgentTool<any>[] {
 	// Initialize guards when workspace dir is provided (host mode)
 	if (guardWorkspaceDir) {
@@ -31,13 +33,13 @@ export function createMomTools(
 
 	const tools: AgentTool<any>[] = [
 		createReadTool(executor, guardWorkspaceDir),
-		createBashTool(executor),
+		createBashTool(executor, settings),
 		createEditTool(executor, guardWorkspaceDir),
 		createWriteTool(executor, guardWorkspaceDir),
 		guardWorkspaceDir ? createAttachTool(guardWorkspaceDir) : attachTool,
 	];
 	if (hostWorkspaceDir) {
-		tools.push(createClaudeTool(hostWorkspaceDir));
+		tools.push(createClaudeTool(hostWorkspaceDir, settings));
 	}
 	return tools;
 }

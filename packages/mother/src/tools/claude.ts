@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
+import type { MotherSettingsManager } from "../context.js";
 import { truncateTail } from "./truncate.js";
 
 const claudeSchema = Type.Object({
@@ -16,7 +17,15 @@ const claudeSchema = Type.Object({
 	timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default: 600)" })),
 });
 
-export function createClaudeTool(hostWorkspaceDir: string): AgentTool<typeof claudeSchema> {
+export function createClaudeTool(
+	hostWorkspaceDir: string,
+	settings?: MotherSettingsManager,
+): AgentTool<typeof claudeSchema> {
+	const toolsConfig = settings?.getToolsSettings();
+	const claudeModel = toolsConfig?.claudeModel ?? "claude-sonnet-4-5-20250929";
+	const defaultMaxTurns = toolsConfig?.claudeMaxTurns ?? 20;
+	const defaultTimeout = toolsConfig?.claudeTimeout ?? 600;
+
 	return {
 		name: "claude",
 		label: "claude",
@@ -33,8 +42,8 @@ export function createClaudeTool(hostWorkspaceDir: string): AgentTool<typeof cla
 			}: { label?: string; prompt: string; sessionId?: string; maxTurns?: number; timeout?: number },
 			signal?: AbortSignal,
 		) => {
-			const turns = maxTurns ?? 20;
-			const timeoutSec = timeout ?? 600;
+			const turns = maxTurns ?? defaultMaxTurns;
+			const timeoutSec = timeout ?? defaultTimeout;
 
 			const args = [
 				"-p",
@@ -45,7 +54,7 @@ export function createClaudeTool(hostWorkspaceDir: string): AgentTool<typeof cla
 				"--max-turns",
 				String(turns),
 				"--model",
-				"claude-sonnet-4-5-20250929",
+				claudeModel,
 			];
 
 			if (sessionId) {
