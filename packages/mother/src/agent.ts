@@ -94,10 +94,12 @@ function resolveModel(settings: MotherSettingsManager): any {
 // NOTE: Model is resolved lazily in createRunner() to ensure env vars are available
 
 /**
- * Check if ollama server is reachable.
+ * Check if the inference server is reachable.
+ * Uses the OpenAI-compatible /v1/models endpoint which works with both
+ * Ollama and llama.cpp servers.
  * Returns error message if unreachable, undefined if ok.
  */
-async function checkOllamaHealth(settings: MotherSettingsManager): Promise<string | undefined> {
+async function checkInferenceHealth(settings: MotherSettingsManager): Promise<string | undefined> {
 	if (settings.getDefaultProvider() !== "ollama") {
 		return undefined;
 	}
@@ -106,25 +108,25 @@ async function checkOllamaHealth(settings: MotherSettingsManager): Promise<strin
 
 	try {
 		const controller = new AbortController();
-		// 5s timeout: health check should be fast; if Ollama is down we fail quickly rather than hang the first user message
+		// 5s timeout: health check should be fast; if the server is down we fail quickly rather than hang the first user message
 		const timeout = setTimeout(() => controller.abort(), 5000);
 
-		// Ollama v1 API has a /models endpoint we can ping
-		const baseUrl = ollamaUrl.replace(/\/v1\/?$/, "");
-		const response = await fetch(`${baseUrl}/api/tags`, {
+		// Use OpenAI-compatible /v1/models endpoint (works with Ollama and llama.cpp)
+		const modelsUrl = ollamaUrl.endsWith("/") ? `${ollamaUrl}models` : `${ollamaUrl}/models`;
+		const response = await fetch(modelsUrl, {
 			signal: controller.signal,
 		});
 		clearTimeout(timeout);
 
 		if (!response.ok) {
-			return `Ollama returned HTTP ${response.status}`;
+			return `Inference server returned HTTP ${response.status}`;
 		}
 		return undefined;
 	} catch (err) {
 		if (err instanceof Error && err.name === "AbortError") {
-			return `Ollama server at ${ollamaUrl} timed out`;
+			return `Inference server at ${ollamaUrl} timed out`;
 		}
-		return `Cannot reach ollama at ${ollamaUrl}: ${err instanceof Error ? err.message : String(err)}`;
+		return `Cannot reach inference server at ${ollamaUrl}: ${err instanceof Error ? err.message : String(err)}`;
 	}
 }
 
@@ -1073,7 +1075,7 @@ function createRunner(
 			_pendingMessages?: PendingMessage[],
 		): Promise<{ stopReason: string; errorMessage?: string }> {
 			// Check ollama health before proceeding
-			const healthError = await checkOllamaHealth(settings);
+			const healthError = await checkInferenceHealth(settings);
 			if (healthError) {
 				log.logWarning("Ollama health check failed", healthError);
 				try {
