@@ -1,6 +1,6 @@
 # Mother
 
-A Discord bot assistant that runs on a Raspberry Pi 5. Uses Claude Haiku 4.5 as its primary brain via Anthropic OAuth, with Claude Code escalation for complex tasks.
+A Discord bot assistant that runs on a Raspberry Pi 5. Uses a local LLM (Qwen3.5-35B via Ollama on a remote inference server) as its brain.
 
 Forked from [badlogic/pi-mono](https://github.com/badlogic/pi-mono). Mother lives in [`packages/mother/`](packages/mother/) and depends on the `pi-ai`, `pi-agent-core`, and `pi-coding-agent` packages from the monorepo.
 
@@ -12,7 +12,7 @@ Complete guide for a fresh install from scratch.
 
 - Raspberry Pi 5 (4GB+ RAM)
 - SD card (32GB+)
-- Anthropic Max subscription (for Claude OAuth)
+- Ollama running on a reachable inference server (or locally)
 - Discord bot token and guild ID
 
 ### 1. Flash Ubuntu Server
@@ -68,15 +68,7 @@ cd ~/pi-mono/packages/mother && npm link
 
 This makes `pi` and `mother` available as commands.
 
-### 8. Install Claude Code CLI
-
-The `claude` tool (used for escalation to Sonnet/Opus) requires the Claude Code CLI:
-
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-### 9. Authenticate with Anthropic
+### 8. Authenticate with Anthropic (optional, for paid API models)
 
 ```bash
 pi /login anthropic
@@ -87,9 +79,9 @@ This will:
 2. Log in to claude.ai and authorize
 3. You get a code (format: `code#state`) -- paste it back into the terminal
 
-Tokens are stored in `~/.pi/agent/auth.json`. Both Mother (Haiku) and the Claude Code escalation tool share these credentials. Tokens auto-refresh.
+Tokens are stored in `~/.pi/agent/auth.json`. Tokens auto-refresh. This step is only needed if you configure Mother to use an Anthropic model instead of Ollama.
 
-### 10. Set up Discord secrets
+### 9. Set up Discord secrets
 
 Store tokens in a root-owned env file (not `.bashrc`):
 
@@ -108,7 +100,7 @@ sudo chown root:root /etc/mother.env
 
 systemd reads this before dropping to the `mother` user, so the process gets the vars but the user can't read the file directly.
 
-### 11. Start Mother
+### 10. Start Mother
 
 ```bash
 mkdir -p ~/mother-workspace
@@ -121,7 +113,7 @@ She bootstraps the workspace structure on first run. Use `--cli` for local testi
 node ~/pi-mono/packages/mother/dist/main.js ~/mother-workspace --sandbox=host --cli
 ```
 
-### 12. Auto-start Mother on boot
+### 11. Auto-start Mother on boot
 
 Create `/etc/systemd/system/mother.service`:
 
@@ -150,7 +142,7 @@ sudo systemctl start mother
 sudo journalctl -u mother -f  # watch logs
 ```
 
-### 13. (Optional) Kiosk display for built-in screen
+### 12. (Optional) Kiosk display for built-in screen
 
 If your Pi has a screen and you want it to auto-display a dashboard Mother builds:
 
@@ -219,10 +211,10 @@ MOTHER_ALLOWED_COMMANDS=-ssh,-scp,-rsync,-python,-python3,-node,-npm,-npx,-kill,
 
 ## Architecture
 
-Mother is a competent agent that handles most tasks directly (file edits, bash commands, code writing). For complex multi-file work, she escalates to Claude Code (Sonnet/Opus) via the `claude` tool.
+Mother is a competent agent that handles tasks directly using her tools (bash, read, write, edit, attach). She runs on the Pi and calls a local LLM via Ollama on a remote inference server.
 
 ```
-Discord <-> Mother (Haiku 4.5 on Pi) --escalation--> Claude Code (Sonnet/Opus)
+Discord <-> Pi 5 (Mother) <-> Ollama (Inference Server, 192.168.1.14)
                 |
                 v
         Workspace filesystem
