@@ -226,7 +226,6 @@ function getState(channelId: string): ChannelState {
 
 function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: ChannelState, isEvent?: boolean) {
 	let message: Message | null = null;
-	const threadMessages: Message[] = [];
 	let accumulatedText = "";
 	let isWorking = true;
 	const workingIndicator = " ...";
@@ -236,6 +235,9 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 
 	// Extract event filename for status message
 	const eventFilename = isEvent ? event.text.match(/^\[EVENT:([^:]+):/)?.[1] : undefined;
+
+	// When triggered from a thread, responses go to the thread
+	const responseChannelId = event.threadId || event.channel;
 
 	return {
 		message: {
@@ -260,7 +262,7 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 				if (message) {
 					await bot.updateMessage(message, displayText);
 				} else {
-					message = await bot.postMessage(event.channel, displayText);
+					message = await bot.postMessage(responseChannelId, displayText);
 				}
 
 				if (shouldLog && message) {
@@ -277,20 +279,14 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 				if (message) {
 					await bot.updateMessage(message, displayText);
 				} else {
-					message = await bot.postMessage(event.channel, displayText);
+					message = await bot.postMessage(responseChannelId, displayText);
 				}
 			});
 			await updatePromise;
 		},
 
-		respondInThread: async (text: string) => {
-			updatePromise = updatePromise.then(async () => {
-				if (message) {
-					const threadMsg = await bot.postInThread(message, text);
-					threadMessages.push(threadMsg);
-				}
-			});
-			await updatePromise;
+		respondInThread: async (_text: string) => {
+			// No-op: thread posting removed. Tool details go to console logs only.
 		},
 
 		setTyping: async (isTyping: boolean) => {
@@ -298,7 +294,7 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 				updatePromise = updatePromise.then(async () => {
 					if (!message) {
 						accumulatedText = eventFilename ? `*Starting event: ${eventFilename}*` : "*Thinking*";
-						message = await bot.postMessage(event.channel, accumulatedText + workingIndicator);
+						message = await bot.postMessage(responseChannelId, accumulatedText + workingIndicator);
 					}
 				});
 				await updatePromise;
@@ -306,7 +302,7 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 		},
 
 		uploadFile: async (filePath: string, title?: string) => {
-			await bot.uploadFile(event.channel, filePath, title);
+			await bot.uploadFile(responseChannelId, filePath, title);
 		},
 
 		setWorking: async (working: boolean) => {
@@ -322,16 +318,6 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 
 		deleteMessage: async () => {
 			updatePromise = updatePromise.then(async () => {
-				// Delete thread messages first (in reverse order)
-				for (let i = threadMessages.length - 1; i >= 0; i--) {
-					try {
-						await bot.deleteDiscordMessage(threadMessages[i]);
-					} catch {
-						// Ignore errors deleting thread messages
-					}
-				}
-				threadMessages.length = 0;
-				// Then delete main message
 				if (message) {
 					await bot.deleteDiscordMessage(message);
 					message = null;
