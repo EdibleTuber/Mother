@@ -60,6 +60,8 @@ Tool execution respects the command whitelist and path scoping configured via en
 
 Memory files are read at the start of each agent turn and included in the system prompt up to their character limits. Daily logs are never injected but can be searched via bash/grep.
 
+Context is kept compact: tool results from older turns are stripped at load time and replaced with one-line summaries (e.g., `[bash: exit 0, 47 lines]`). The most recent turn keeps full tool results. After compaction, old entries are archived to `context-archive.jsonl` and `context.jsonl` is rewritten with only compacted state, so it stays proportional to recent history rather than growing indefinitely.
+
 ## Events
 
 Three event types exist:

@@ -84,6 +84,8 @@ Discord ──> Pi 5 (Mother) ──> Ollama (192.168.1.14)
 - Dual log system: `context.jsonl` (API messages) + `log.jsonl` (human-readable)
 - Message sync: pulls missed messages from log.jsonl into context on each run
 - Auto-compaction when context window fills
+- Tool results from older turns are stripped at load time, replaced with one-line summaries (e.g., `[bash: exit 0, 47 lines]`). Most recent turn keeps full results.
+- After compaction, old entries are archived to `context-archive.jsonl` and `context.jsonl` is rewritten with only compacted state (stays proportional to recent history)
 - Per-channel runner caching (one AgentSession per channel, persistent)
 
 **Discord Integration:**

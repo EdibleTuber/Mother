@@ -61,7 +61,5 @@ Runs on a Raspberry Pi, uses Ollama (glm-4.7-flash) by default. Key files:
 
 The fallback Ollama config in `agent.ts` has Mother-specific flags:
 - `thinkingInText: true` — Strips "Thinking\n..." prefix from text output (for models that don't use thinking blocks)
-- `intermediateToThread: true` — Routes intermediate messages (stopReason="toolUse") to Discord thread only
-- `showThinkingInThread: false` — Whether to post thinking blocks to thread (always logged regardless)
 
 These can be overridden per-model in `~/.pi/mother/models.json`.
