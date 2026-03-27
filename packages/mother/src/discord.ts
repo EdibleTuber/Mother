@@ -14,6 +14,7 @@ import {
 	type Message,
 	Partials,
 	type TextChannel,
+	type ThreadChannel,
 } from "discord.js";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "fs";
 import { basename, join } from "path";
@@ -34,6 +35,8 @@ export interface DiscordEvent {
 	files?: Array<{ name?: string; url?: string }>;
 	/** Processed attachments with local paths (populated after logUserMessage) */
 	attachments?: Attachment[];
+	/** If this message came from a thread, the thread's channel ID (for routing responses back) */
+	threadId?: string;
 }
 
 export interface DiscordUser {
@@ -343,6 +346,75 @@ export class DiscordBot {
 				return;
 			}
 
+			// --- Thread detection ---
+			const isThread =
+				message.channel.type === ChannelType.PublicThread || message.channel.type === ChannelType.PrivateThread;
+
+			if (isThread) {
+				const thread = message.channel as ThreadChannel;
+				const isMotherThread = thread.ownerId === this.botUserId;
+
+				if (isMotherThread) {
+					// No @mention required in Mother's own threads
+					// Route to parent channel's runner
+					const parentId = thread.parentId;
+					if (!parentId) return;
+
+					// Fetch the starter message to give Mother context about what this thread is about
+					let starterText = "";
+					try {
+						const starter = await thread.fetchStarterMessage();
+						if (starter) {
+							const text = starter.content || "";
+							starterText = text.length > 200 ? `${text.substring(0, 200)}...` : text;
+						}
+					} catch {
+						// Starter message may have been deleted
+					}
+
+					// Build event routed to parent channel
+					const discordEvent = this.buildEvent(message, "mention");
+					discordEvent.channel = parentId;
+					discordEvent.threadId = thread.id;
+
+					// Prefix message with thread context
+					if (starterText) {
+						discordEvent.text = `[Thread reply on: "${starterText}"]\n${discordEvent.text}`;
+					}
+
+					// Log and process
+					discordEvent.attachments = this.logUserMessage(discordEvent);
+
+					// Skip messages from before startup
+					if (this.startupTs && message.createdTimestamp < this.startupTs) {
+						log.logInfo(
+							`[${parentId}] Logged old thread message (pre-startup), not triggering: ${discordEvent.text.substring(0, 30)}`,
+						);
+						return;
+					}
+
+					// Check for stop command
+					if (discordEvent.text.toLowerCase().trim() === "stop") {
+						if (this.handler.isRunning(parentId)) {
+							this.handler.handleStop(parentId, this);
+						} else {
+							this.postMessage(thread.id, "_Nothing running_");
+						}
+						return;
+					}
+
+					// Check if busy
+					if (this.handler.isRunning(parentId)) {
+						this.postMessage(thread.id, "_Already working. Say stop to cancel._");
+					} else {
+						this.getQueue(parentId).enqueue(() => this.handler.handleEvent(discordEvent, this));
+					}
+					return;
+				}
+				// Non-Mother thread: fall through to normal @mention handling
+			}
+
+			// --- Normal channel/DM handling (unchanged) ---
 			const isDM = message.channel.type === ChannelType.DM;
 			const isMention = message.mentions.has(this.botUserId!);
 
