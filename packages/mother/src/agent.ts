@@ -1070,6 +1070,7 @@ function createRunner(
 		},
 		stopReason: "stop",
 		errorMessage: undefined as string | undefined,
+		consecutiveToolErrors: 0,
 	};
 
 	// Subscribe to events ONCE
@@ -1103,10 +1104,29 @@ function createRunner(
 
 			if (agentEvent.isError) {
 				log.logToolError(logCtx, agentEvent.toolName, durationMs, resultStr);
-				// Surface errors to channel
-				queue.enqueue(() => ctx.respond(`*Error: ${truncate(resultStr, 200)}*`, false), "tool error");
+				runState.consecutiveToolErrors++;
+
+				// Circuit breaker: abort after too many consecutive tool errors
+				// Prevents the model from burning context retrying something it can't do
+				if (runState.consecutiveToolErrors >= 5) {
+					log.logWarning(
+						`${runState.consecutiveToolErrors} consecutive tool errors -- aborting to prevent runaway`,
+					);
+					queue.enqueue(
+						() =>
+							ctx.respond(
+								"*Stopping: too many consecutive tool errors. Tell the user what you were trying to do and ask for help.*",
+								false,
+							),
+						"circuit breaker",
+					);
+					session.abort();
+				} else {
+					queue.enqueue(() => ctx.respond(`*Error: ${truncate(resultStr, 200)}*`, false), "tool error");
+				}
 			} else {
 				log.logToolSuccess(logCtx, agentEvent.toolName, durationMs, resultStr);
+				runState.consecutiveToolErrors = 0;
 			}
 			// Tool details go to console only -- not posted to Discord
 		} else if (event.type === "message_start") {
@@ -1290,6 +1310,7 @@ function createRunner(
 				channelName: ctx.channelName,
 			};
 			runState.pendingTools.clear();
+			runState.consecutiveToolErrors = 0;
 			runState.totalUsage = {
 				input: 0,
 				output: 0,
