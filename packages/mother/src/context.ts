@@ -211,7 +211,6 @@ export interface MotherContextSettings {
 export interface MotherDiscordSettings {
 	editRateLimit: number;
 	maxQueuedEvents: number;
-	threadName: string;
 }
 
 export interface MotherToolsSettings {
@@ -249,7 +248,6 @@ const DEFAULT_CONTEXT: MotherContextSettings = {
 const DEFAULT_DISCORD: MotherDiscordSettings = {
 	editRateLimit: 1000,
 	maxQueuedEvents: 5,
-	threadName: "Details",
 };
 
 const DEFAULT_TOOLS: MotherToolsSettings = {

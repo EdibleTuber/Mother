@@ -4,7 +4,7 @@
 
 Mother is a Discord bot that runs on a Raspberry Pi 5 and delegates to an LLM-powered coding agent. The LLM inference runs on a separate server via Ollama. Mother was ported from `packages/mom` (a Slack bot) in the original `badlogic/pi-mono` repository and forked to `EdibleTuber/Mother`.
 
-The bot manages per-channel agent sessions, executes tools (bash, file I/O, Claude delegation), maintains persistent memory, and runs scheduled events -- all orchestrated through Discord as the user interface.
+The bot manages per-channel agent sessions, executes tools (bash, file I/O, attach), maintains persistent memory, and runs scheduled events -- all orchestrated through Discord as the user interface.
 
 ## Architecture
 
@@ -31,8 +31,9 @@ Mother runs as a Node.js process on the Pi. Discord messages arrive via the Disc
 5. Missed messages (sent while the bot was offline or busy) are synced into context as log entries.
 6. The system prompt is assembled: global memory + channel memory + MOTHER.md + workspace file tree + Discord user IDs + available skills + REFERENCE.md content.
 7. The LLM is called via the configured provider (default: Ollama).
-8. If the model returns tool calls, they are executed and results fed back. This loops until the model produces a text response or hits a stop condition.
-9. The final response is posted to Discord, split at 1900-character boundaries. Tool output and intermediate messages go to a thread.
+8. If the model returns tool calls, they are executed and results fed back. Tool details are logged to console only (not posted to Discord). A transient status message in the channel shows progress during tool use. This loops until the model produces a text response or hits a stop condition.
+9. The final response replaces the transient status and is posted to the channel, split at 1900-character boundaries. No threads are auto-created.
+10. Thread replies in Mother's threads route to the parent channel's runner (no @mention required).
 
 ## Tools
 
@@ -107,7 +108,6 @@ All fields below live in `{workspace}/settings.json` and are loaded at startup. 
 | retry.baseDelayMs | number | 2000 | Base retry delay in ms |
 | discord.editRateLimit | number | 1000 | Min ms between Discord message edits |
 | discord.maxQueuedEvents | number | 5 | Max queued events per channel |
-| discord.threadName | string | "Details" | Thread name for tool output |
 | tools.bashMaxLines | number | 2000 | Bash output line limit |
 | tools.bashMaxBytes | number | 51200 | Bash output byte limit |
 | events.debounceMs | number | 100 | Event file creation debounce |

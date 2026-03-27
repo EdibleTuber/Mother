@@ -88,9 +88,10 @@ Discord ──> Pi 5 (Mother) ──> Ollama (192.168.1.14)
 
 **Discord Integration:**
 - Responds to @mentions and DMs
+- Thread replies route to parent channel runner (no @mention required in Mother's threads)
 - Per-channel sequential queue (max 5 pending)
 - `stop` command aborts running task
-- Tool results posted to message threads
+- Channel shows transient status during tool use, replaced by final response
 - Long responses split at 1900 chars (Discord limit)
 - Attachment download from Discord CDN
 - User/channel ID mapping in system prompt

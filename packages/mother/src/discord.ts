@@ -77,7 +77,6 @@ export interface DiscordContext {
 	users: UserInfo[];
 	respond: (text: string, shouldLog?: boolean) => Promise<void>;
 	replaceMessage: (text: string) => Promise<void>;
-	respondInThread: (text: string) => Promise<void>;
 	setTyping: (isTyping: boolean) => Promise<void>;
 	uploadFile: (filePath: string, title?: string) => Promise<void>;
 	setWorking: (working: boolean) => Promise<void>;
@@ -261,15 +260,6 @@ export class DiscordBot {
 
 	async deleteDiscordMessage(message: Message): Promise<void> {
 		await message.delete();
-	}
-
-	async postInThread(parentMessage: Message, text: string): Promise<Message> {
-		let thread = parentMessage.thread;
-		if (!thread) {
-			const threadName = this.settings?.getDiscordSettings().threadName ?? "Details";
-			thread = await parentMessage.startThread({ name: threadName });
-		}
-		return await thread.send(text);
 	}
 
 	async uploadFile(channelId: string, filePath: string, title?: string): Promise<void> {
