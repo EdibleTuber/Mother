@@ -21,7 +21,7 @@ import {
 	type Skill,
 } from "@mariozechner/pi-coding-agent";
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { mkdir, writeFile } from "fs/promises";
+import { appendFile, mkdir, writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 import { MotherSettingsManager, syncLogToSessionManager } from "./context.js";
@@ -624,6 +624,58 @@ function stripOldToolResults(messages: AgentMessage[]): AgentMessage[] {
 }
 
 /**
+ * Archive old context entries and truncate context.jsonl after compaction.
+ * Appends all current entries to context-archive.jsonl, then rewrites
+ * context.jsonl with only the compacted state (summary + recent messages).
+ */
+async function archiveAndTruncateContext(channelDir: string, sessionManager: SessionManager): Promise<void> {
+	const sessionFile = sessionManager.getSessionFile();
+	if (!sessionFile) return;
+
+	try {
+		// Read current context file
+		let currentContent = "";
+		if (existsSync(sessionFile)) {
+			currentContent = readFileSync(sessionFile, "utf-8");
+		}
+
+		if (!currentContent.trim()) return;
+
+		// Append current entries to archive
+		const archivePath = join(channelDir, "context-archive.jsonl");
+		await appendFile(archivePath, currentContent.endsWith("\n") ? currentContent : `${currentContent}\n`);
+
+		// Get the compacted state from session manager and rewrite the file.
+		// The session manager's internal state is already compacted at this point.
+		const entries = sessionManager.getEntries();
+		const lines = entries.map((entry) => JSON.stringify(entry));
+
+		// Preserve the session header if it exists
+		const allFileEntries = currentContent.trim().split("\n").filter(Boolean);
+		const sessionHeader = allFileEntries.find((line) => {
+			try {
+				const parsed = JSON.parse(line);
+				return parsed.type === "session";
+			} catch {
+				return false;
+			}
+		});
+
+		const newContent = sessionHeader ? `${[sessionHeader, ...lines].join("\n")}\n` : `${lines.join("\n")}\n`;
+
+		await writeFile(sessionFile, newContent, "utf-8");
+
+		log.logInfo(
+			`Archived ${allFileEntries.length} entries to context-archive.jsonl, ` +
+				`rewrote context.jsonl with ${entries.length} entries`,
+		);
+	} catch (error) {
+		// Non-fatal: if archiving fails, context.jsonl is still valid
+		log.logWarning("Failed to archive/truncate context", error instanceof Error ? error.message : String(error));
+	}
+}
+
+/**
  * Create a summarized version of a tool result message.
  * Replaces the full content with a one-line summary while preserving
  * the message structure (role, toolCallId, toolName, timestamp).
@@ -1130,6 +1182,10 @@ function createRunner(
 			const compEvent = event as any;
 			if (compEvent.result) {
 				log.logInfo(`Auto-compaction complete: ${compEvent.result.tokensBefore} tokens compacted`);
+				// Archive old entries and truncate context.jsonl to keep only compacted state
+				queue.enqueue(async () => {
+					await archiveAndTruncateContext(channelDir, sessionManager);
+				}, "archive context");
 			} else if (compEvent.aborted) {
 				log.logInfo("Auto-compaction aborted");
 			}
