@@ -575,6 +575,130 @@ function trimContextByTurns(
 	return { messages: kept, droppedTurns, summary };
 }
 
+/**
+ * Replace tool result content in older turns with one-line summaries.
+ * The most recent turn keeps full tool results for immediate recall.
+ * This dramatically reduces context size -- a tool result that was 2000+ tokens
+ * becomes a single line (~20 tokens).
+ */
+function stripOldToolResults(messages: AgentMessage[]): AgentMessage[] {
+	// Split messages into turns (same logic as trimContextByTurns)
+	const turns: AgentMessage[][] = [];
+	let currentTurn: AgentMessage[] = [];
+
+	for (const msg of messages) {
+		if ("role" in msg && msg.role === "user" && currentTurn.length > 0) {
+			turns.push(currentTurn);
+			currentTurn = [];
+		}
+		currentTurn.push(msg);
+	}
+	if (currentTurn.length > 0) {
+		turns.push(currentTurn);
+	}
+
+	// Nothing to strip if 0 or 1 turns
+	if (turns.length <= 1) {
+		return messages;
+	}
+
+	// Process all turns except the last one -- replace tool results with summaries
+	const result: AgentMessage[] = [];
+	for (let i = 0; i < turns.length; i++) {
+		if (i < turns.length - 1) {
+			// Older turn: strip tool results
+			for (const msg of turns[i]) {
+				if ("role" in msg && msg.role === "toolResult") {
+					result.push(summarizeToolResult(msg as any));
+				} else {
+					result.push(msg);
+				}
+			}
+		} else {
+			// Most recent turn: keep full tool results
+			result.push(...turns[i]);
+		}
+	}
+
+	return result;
+}
+
+/**
+ * Create a summarized version of a tool result message.
+ * Replaces the full content with a one-line summary while preserving
+ * the message structure (role, toolCallId, toolName, timestamp).
+ */
+function summarizeToolResult(msg: {
+	role: "toolResult";
+	toolCallId: string;
+	toolName: string;
+	content: Array<{ type: string; text?: string }>;
+	isError: boolean;
+	timestamp: number;
+	details?: unknown;
+}): AgentMessage {
+	const text = msg.content
+		.filter((c): c is { type: "text"; text: string } => c.type === "text" && typeof c.text === "string")
+		.map((c) => c.text)
+		.join("\n");
+
+	let summary: string;
+
+	switch (msg.toolName) {
+		case "bash": {
+			const exitMatch = text.match(/Command exited with code (\d+)/);
+			const exitCode = exitMatch ? exitMatch[1] : msg.isError ? "non-zero" : "0";
+			const lineCount = text.split("\n").length;
+			summary = `[bash: exit ${exitCode}, ${lineCount} lines output]`;
+			break;
+		}
+		case "read": {
+			const lines = text.split("\n").length;
+			summary = `[read: ${lines} lines]`;
+			break;
+		}
+		case "write": {
+			const writeMatch = text.match(/wrote (\d+) bytes to (.+)/);
+			if (writeMatch) {
+				summary = `[write: ${writeMatch[2]}, ${writeMatch[1]} bytes]`;
+			} else {
+				summary = `[write: completed]`;
+			}
+			break;
+		}
+		case "edit": {
+			const editMatch = text.match(/replaced text in (.+?)\./);
+			if (editMatch) {
+				summary = `[edit: ${editMatch[1]}]`;
+			} else {
+				summary = `[edit: completed]`;
+			}
+			break;
+		}
+		case "attach": {
+			const attachMatch = text.match(/Attached file: (.+)/);
+			summary = attachMatch ? `[attach: ${attachMatch[1]}]` : `[attach: completed]`;
+			break;
+		}
+		default:
+			summary = `[${msg.toolName}: ${msg.isError ? "error" : "completed"}]`;
+	}
+
+	if (msg.isError) {
+		const errorPreview = text.length > 200 ? `${text.substring(0, 200)}...` : text;
+		summary = `[${msg.toolName}: ERROR] ${errorPreview}`;
+	}
+
+	return {
+		role: "toolResult",
+		toolCallId: msg.toolCallId,
+		toolName: msg.toolName,
+		content: [{ type: "text", text: summary }],
+		isError: msg.isError,
+		timestamp: msg.timestamp,
+	} as AgentMessage;
+}
+
 function buildSystemPrompt(
 	workspacePath: string,
 	channelId: string,
@@ -1069,7 +1193,8 @@ function createRunner(
 			const reloadedSession = sessionManager.buildSessionContext();
 			if (reloadedSession.messages.length > 0) {
 				const trimmed = trimContextByTurns(reloadedSession.messages, channelId, settings);
-				agent.replaceMessages(trimmed.messages);
+				const stripped = stripOldToolResults(trimmed.messages);
+				agent.replaceMessages(stripped);
 				log.logInfo(`[${channelId}] Reloaded ${trimmed.messages.length} messages from context`);
 				if (trimmed.droppedTurns > 0) {
 					log.logInfo(`[${channelId}] Trimmed ${trimmed.droppedTurns} turns, summary: ${trimmed.summary}`);
