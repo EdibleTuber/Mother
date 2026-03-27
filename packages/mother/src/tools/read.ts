@@ -58,7 +58,7 @@ export function createReadTool(executor: Executor, workspaceDir?: string): Agent
 			signal?: AbortSignal,
 		): Promise<{ content: (TextContent | ImageContent)[]; details: ReadToolDetails | undefined }> => {
 			if (workspaceDir) {
-				const check = guardPath(path, workspaceDir);
+				const check = guardPath(path, workspaceDir, "read");
 				if (!check.allowed) throw new Error(check.reason!);
 				path = check.resolvedPath!;
 			}

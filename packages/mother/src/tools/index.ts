@@ -18,7 +18,8 @@ export function createMomTools(
 	// Initialize guards when workspace dir is provided (host mode)
 	if (guardWorkspaceDir) {
 		const extraPaths = process.env.MOTHER_ALLOWED_PATHS?.split(":").filter(Boolean);
-		initPathGuard(guardWorkspaceDir, extraPaths);
+		const readOnlyPaths = process.env.MOTHER_READONLY_PATHS?.split(":").filter(Boolean);
+		initPathGuard(guardWorkspaceDir, extraPaths, readOnlyPaths);
 
 		const envCommands = process.env.MOTHER_ALLOWED_COMMANDS;
 		if (envCommands) {

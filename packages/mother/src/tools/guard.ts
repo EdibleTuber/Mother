@@ -23,8 +23,9 @@ export interface GuardResult {
 // ---------------------------------------------------------------------------
 
 let allowedPrefixes: string[] = [];
+let readOnlyPrefixes: string[] = [];
 
-export function initPathGuard(workspaceDir: string, extraPaths?: string[]): void {
+export function initPathGuard(workspaceDir: string, extraPaths?: string[], readOnlyPaths?: string[]): void {
 	allowedPrefixes = [normalize(workspaceDir), "/tmp"];
 	if (extraPaths) {
 		for (const p of extraPaths) {
@@ -32,24 +33,47 @@ export function initPathGuard(workspaceDir: string, extraPaths?: string[]): void
 			if (trimmed) allowedPrefixes.push(normalize(trimmed));
 		}
 	}
+	readOnlyPrefixes = [];
+	if (readOnlyPaths) {
+		for (const p of readOnlyPaths) {
+			const trimmed = p.trim();
+			if (trimmed) readOnlyPrefixes.push(normalize(trimmed));
+		}
+	}
 }
 
-export function guardPath(inputPath: string, workspaceDir: string): GuardResult {
-	if (allowedPrefixes.length === 0) {
+/**
+ * Check if a path is allowed for the given access mode.
+ * "read" checks both writable and read-only paths.
+ * "write" checks only writable paths.
+ */
+export function guardPath(inputPath: string, workspaceDir: string, mode: "read" | "write" = "write"): GuardResult {
+	if (allowedPrefixes.length === 0 && readOnlyPrefixes.length === 0) {
 		return { allowed: true, resolvedPath: inputPath };
 	}
 
 	const resolved = normalize(resolve(workspaceDir, inputPath));
 
+	// Writable paths are always allowed for both read and write
 	for (const prefix of allowedPrefixes) {
 		if (resolved === prefix || resolved.startsWith(`${prefix}/`)) {
 			return { allowed: true, resolvedPath: resolved };
 		}
 	}
 
+	// Read-only paths only allowed for read access
+	if (mode === "read") {
+		for (const prefix of readOnlyPrefixes) {
+			if (resolved === prefix || resolved.startsWith(`${prefix}/`)) {
+				return { allowed: true, resolvedPath: resolved };
+			}
+		}
+	}
+
+	const modeHint = mode === "write" ? " (write access denied)" : "";
 	return {
 		allowed: false,
-		reason: `Path denied: ${inputPath} (resolved: ${resolved}) is outside allowed directories`,
+		reason: `Path denied: ${inputPath} (resolved: ${resolved}) is outside allowed directories${modeHint}`,
 	};
 }
 
@@ -390,7 +414,7 @@ export function guardCommand(command: string): GuardResult {
 		if (!allowedCommands.has(cmd)) {
 			return {
 				allowed: false,
-				reason: `Command denied: '${cmd}' is not on the allowed commands list`,
+				reason: `Command denied: '${cmd}' is not on the allowed commands list. Do NOT retry this command or attempt workarounds. Tell the user what you need and ask them to do it.`,
 			};
 		}
 	}
