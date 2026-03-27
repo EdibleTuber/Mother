@@ -86,8 +86,6 @@ function resolveModel(settings: MotherSettingsManager): any {
 		maxTokens: settings.getMaxTokens(),
 		// Mother-specific: thinking output filtering
 		thinkingInText: false, // qwen3 uses proper thinking blocks, not text-prefixed thinking
-		intermediateToThread: true, // Route intermediate messages (stopReason="toolUse") to thread only
-		showThinkingInThread: false, // Post thinking blocks to thread (always logged regardless)
 	};
 }
 
@@ -733,7 +731,7 @@ function extractToolResultText(result: unknown): string {
 	return JSON.stringify(result);
 }
 
-function formatToolArgsForDiscord(_toolName: string, args: Record<string, unknown>): string {
+function _formatToolArgsForDiscord(_toolName: string, args: Record<string, unknown>): string {
 	const lines: string[] = [];
 
 	for (const [key, value] of Object.entries(args)) {
@@ -787,13 +785,6 @@ function createRunner(
 ): AgentRunner {
 	// Resolve model at runner creation time (not module load time)
 	const model = resolveModel(settings);
-	// Apply Mother defaults for Discord routing (read by event handlers)
-	if ((model as any).intermediateToThread === undefined) {
-		(model as any).intermediateToThread = true;
-	}
-	if ((model as any).showThinkingInThread === undefined) {
-		(model as any).showThinkingInThread = false;
-	}
 	if (!model) {
 		throw new Error(
 			"Failed to resolve model. Check MOTHER_MODEL_PROVIDER and MOTHER_MODEL_ID environment variables.",
@@ -923,7 +914,9 @@ function createRunner(
 			});
 
 			log.logToolStart(logCtx, agentEvent.toolName, label, agentEvent.args as Record<string, unknown>);
-			queue.enqueue(() => ctx.respond(`*-> ${label}*`, false), "tool label");
+
+			// Transient status: replace channel message with current tool label
+			queue.enqueue(() => ctx.replaceMessage(`*${label}*`), "tool status");
 		} else if (event.type === "tool_execution_end") {
 			const agentEvent = event as AgentEvent & { type: "tool_execution_end" };
 			const resultStr = extractToolResultText(agentEvent.result);
@@ -934,27 +927,12 @@ function createRunner(
 
 			if (agentEvent.isError) {
 				log.logToolError(logCtx, agentEvent.toolName, durationMs, resultStr);
+				// Surface errors to channel
+				queue.enqueue(() => ctx.respond(`*Error: ${truncate(resultStr, 200)}*`, false), "tool error");
 			} else {
 				log.logToolSuccess(logCtx, agentEvent.toolName, durationMs, resultStr);
 			}
-
-			// Post args + result to thread
-			const label = pending?.args ? (pending.args as { label?: string }).label : undefined;
-			const argsFormatted = pending
-				? formatToolArgsForDiscord(agentEvent.toolName, pending.args as Record<string, unknown>)
-				: "(args not found)";
-			const duration = (durationMs / 1000).toFixed(1);
-			let threadMessage = `**${agentEvent.isError ? "X" : "OK"} ${agentEvent.toolName}**`;
-			if (label) threadMessage += `: ${label}`;
-			threadMessage += ` (${duration}s)\n`;
-			if (argsFormatted) threadMessage += `\`\`\`\n${argsFormatted}\n\`\`\`\n`;
-			threadMessage += `**Result:**\n\`\`\`\n${resultStr}\n\`\`\``;
-
-			queue.enqueueMessage(threadMessage, "thread", "tool result thread", false);
-
-			if (agentEvent.isError) {
-				queue.enqueue(() => ctx.respond(`*Error: ${truncate(resultStr, 200)}*`, false), "tool error");
-			}
+			// Tool details go to console only -- not posted to Discord
 		} else if (event.type === "message_start") {
 			const agentEvent = event as AgentEvent & { type: "message_start" };
 			if (agentEvent.message.role === "assistant") {
@@ -997,16 +975,11 @@ function createRunner(
 
 				const rawText = textParts.join("\n");
 				const filterThinking = (model as any).thinkingInText === true;
-				const intermediateToThread = (model as any).intermediateToThread === true;
 				const isIntermediate = assistantMsg.stopReason === "toolUse";
 
-				// Actual thinking blocks — always logged, optionally posted to thread
-				const showThinking = (model as any).showThinkingInThread === true;
+				// Log thinking to console only
 				for (const thinking of thinkingParts) {
 					log.logThinking(logCtx, thinking);
-					if (showThinking) {
-						queue.enqueueMessage(`*${thinking}*`, "thread", "thinking thread", false);
-					}
 				}
 
 				// Fallback: if model put everything in reasoning field, use thinking as response
@@ -1019,21 +992,16 @@ function createRunner(
 					const text = filterThinking ? stripThinkingBlock(displayText) : displayText;
 					log.logResponse(logCtx, displayText);
 
-					if (text.trim()) {
-						if (intermediateToThread && isIntermediate) {
-							// Intermediate: thread only
-							queue.enqueueMessage(text, "thread", "response thread", false);
-						} else {
-							// Final response (or filtering disabled): main + thread
-							queue.enqueueMessage(text, "main", "response main");
-							queue.enqueueMessage(text, "thread", "response thread", false);
-						}
+					if (text.trim() && !isIntermediate) {
+						// Final response: post to channel (replaces transient status)
+						queue.enqueueMessage(text, "main", "response main");
 					}
+					// Intermediate responses (stopReason=toolUse): log only, not posted
 				}
 			}
 		} else if (event.type === "auto_compaction_start") {
 			log.logInfo(`Auto-compaction started (reason: ${(event as any).reason})`);
-			queue.enqueue(() => ctx.respond("*Compacting context...*", false), "compaction start");
+			queue.enqueue(() => ctx.replaceMessage("*Compacting context...*"), "compaction start");
 		} else if (event.type === "auto_compaction_end") {
 			const compEvent = event as any;
 			if (compEvent.result) {
@@ -1045,7 +1013,7 @@ function createRunner(
 			const retryEvent = event as any;
 			log.logWarning(`Retrying (${retryEvent.attempt}/${retryEvent.maxAttempts})`, retryEvent.errorMessage);
 			queue.enqueue(
-				() => ctx.respond(`*Retrying (${retryEvent.attempt}/${retryEvent.maxAttempts})...*`, false),
+				() => ctx.replaceMessage(`*Retrying (${retryEvent.attempt}/${retryEvent.maxAttempts})...*`),
 				"retry",
 			);
 		}
@@ -1161,21 +1129,13 @@ function createRunner(
 						} catch (err) {
 							const errMsg = err instanceof Error ? err.message : String(err);
 							log.logWarning(`Discord API error (${errorContext})`, errMsg);
-							try {
-								await ctx.respondInThread(`*Error: ${errMsg}*`);
-							} catch {
-								// Ignore
-							}
 						}
 					});
 				},
-				enqueueMessage(text: string, target: "main" | "thread", errorContext: string, doLog = true): void {
+				enqueueMessage(text: string, _target: "main" | "thread", errorContext: string, doLog = true): void {
 					const parts = splitForDiscord(text);
 					for (const part of parts) {
-						this.enqueue(
-							() => (target === "main" ? ctx.respond(part, doLog) : ctx.respondInThread(part)),
-							errorContext,
-						);
+						this.enqueue(() => ctx.respond(part, doLog), errorContext);
 					}
 				},
 			};
@@ -1237,8 +1197,7 @@ function createRunner(
 			// Handle error case
 			if (runState.stopReason === "error" && runState.errorMessage) {
 				try {
-					await ctx.replaceMessage("*Sorry, something went wrong*");
-					await ctx.respondInThread(`*Error: ${runState.errorMessage}*`);
+					await ctx.replaceMessage(`*Error: ${truncate(runState.errorMessage, 500)}*`);
 				} catch (err) {
 					const errMsg = err instanceof Error ? err.message : String(err);
 					log.logWarning("Failed to post error message", errMsg);
@@ -1296,14 +1255,8 @@ function createRunner(
 					: 0;
 				const contextWindow = model.contextWindow || 128000;
 
-				const summary = log.logUsageSummary(
-					runState.logCtx!,
-					runState.totalUsage,
-					contextTokens,
-					contextWindow,
-					isLocalModel,
-				);
-				runState.queue.enqueue(() => ctx.respondInThread(summary), "usage summary");
+				log.logUsageSummary(runState.logCtx!, runState.totalUsage, contextTokens, contextWindow, isLocalModel);
+				// Usage summary goes to console log only
 				await queueChain;
 			}
 
