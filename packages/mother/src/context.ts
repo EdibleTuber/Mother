@@ -173,6 +173,7 @@ export interface MotherSettings {
 	discord?: Partial<MotherDiscordSettings>;
 	tools?: Partial<MotherToolsSettings>;
 	events?: Partial<MotherEventsSettings>;
+	vaultPath?: string;
 }
 
 const DEFAULT_COMPACTION: MotherCompactionSettings = {
@@ -374,6 +375,10 @@ export class MotherSettingsManager {
 
 	getEventsSettings(): MotherEventsSettings {
 		return { ...DEFAULT_EVENTS, ...this.settings.events };
+	}
+
+	getVaultPath(): string | undefined {
+		return this.settings.vaultPath;
 	}
 
 	setDefaultModelAndProvider(provider: string, modelId: string): void {

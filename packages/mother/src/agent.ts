@@ -1259,6 +1259,21 @@ function createRunner(
 			const isDocker = sandboxConfig.type === "docker";
 			await bootstrapWorkspace(channelDir, workspacePath, channelId, isDocker);
 
+			// Sync vault if configured (git pull before processing)
+			const vaultPath = settings.getVaultPath();
+			if (vaultPath && existsSync(join(vaultPath, ".git"))) {
+				try {
+					const vaultResult = await executor.exec(`git -C ${vaultPath} pull --rebase --quiet`);
+					if (vaultResult.code === 0) {
+						log.logInfo(`Vault synced: ${vaultPath}`);
+					} else {
+						log.logWarning("Vault sync failed", vaultResult.stderr || "git pull returned non-zero");
+					}
+				} catch {
+					log.logWarning("Vault sync error", "git pull threw an exception");
+				}
+			}
+
 			// Sync messages from log.jsonl
 			const syncedCount = syncLogToSessionManager(sessionManager, channelDir, ctx.message.ts);
 			if (syncedCount > 0) {
