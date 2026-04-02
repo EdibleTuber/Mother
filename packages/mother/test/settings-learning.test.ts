@@ -19,6 +19,8 @@ describe("learning settings", () => {
 		expect(s.enabled).toBe(true);
 		expect(s.sentimentModel).toBeNull();
 		expect(s.maxLearningsPerDay).toBe(20);
+		expect(s.ratingsPerChannel).toBe(true);
+		expect(s.extractionMinTurns).toBe(1);
 	});
 
 	it("merges partial overrides with defaults", () => {
@@ -38,6 +40,9 @@ describe("wisdom settings", () => {
 		expect(s.promotionThreshold).toBe(0.8);
 		expect(s.clusterMinOccurrences).toBe(3);
 		expect(s.decayDays).toBe(90);
+		expect(s.explicitPromotionConfidence).toBe(0.85);
+		expect(s.clusterSimilarityThreshold).toBe(0.8);
+		expect(s.decayAmount).toBe(0.1);
 	});
 });
 

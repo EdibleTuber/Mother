@@ -232,6 +232,8 @@ export interface MotherLearningSettings {
 	enabled: boolean;
 	sentimentModel: string | null;
 	maxLearningsPerDay: number;
+	ratingsPerChannel: boolean;
+	extractionMinTurns: number;
 }
 
 export interface MotherWisdomSettings {
@@ -240,6 +242,9 @@ export interface MotherWisdomSettings {
 	promotionThreshold: number;
 	clusterMinOccurrences: number;
 	decayDays: number;
+	explicitPromotionConfidence: number;
+	clusterSimilarityThreshold: number;
+	decayAmount: number;
 }
 
 export interface MotherRelationshipSettings {
@@ -289,6 +294,8 @@ const DEFAULT_LEARNING: MotherLearningSettings = {
 	enabled: true,
 	sentimentModel: null,
 	maxLearningsPerDay: 20,
+	ratingsPerChannel: true,
+	extractionMinTurns: 1,
 };
 
 const DEFAULT_WISDOM: MotherWisdomSettings = {
@@ -297,6 +304,9 @@ const DEFAULT_WISDOM: MotherWisdomSettings = {
 	promotionThreshold: 0.8,
 	clusterMinOccurrences: 3,
 	decayDays: 90,
+	explicitPromotionConfidence: 0.85,
+	clusterSimilarityThreshold: 0.8,
+	decayAmount: 0.1,
 };
 
 const DEFAULT_RELATIONSHIPS: MotherRelationshipSettings = {
