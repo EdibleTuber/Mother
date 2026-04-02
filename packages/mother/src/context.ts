@@ -173,6 +173,9 @@ export interface MotherSettings {
 	discord?: Partial<MotherDiscordSettings>;
 	tools?: Partial<MotherToolsSettings>;
 	events?: Partial<MotherEventsSettings>;
+	learning?: Partial<MotherLearningSettings>;
+	wisdom?: Partial<MotherWisdomSettings>;
+	relationships?: Partial<MotherRelationshipSettings>;
 	vaultPath?: string;
 }
 
@@ -225,6 +228,26 @@ export interface MotherEventsSettings {
 	retryBaseMs: number;
 }
 
+export interface MotherLearningSettings {
+	enabled: boolean;
+	sentimentModel: string | null;
+	maxLearningsPerDay: number;
+}
+
+export interface MotherWisdomSettings {
+	enabled: boolean;
+	maxActiveChars: number;
+	promotionThreshold: number;
+	clusterMinOccurrences: number;
+	decayDays: number;
+}
+
+export interface MotherRelationshipSettings {
+	enabled: boolean;
+	minTurnsForExtraction: number;
+	deduplicationThreshold: number;
+}
+
 const DEFAULT_MODEL: MotherModelSettings = {
 	provider: "ollama",
 	modelId: "Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M",
@@ -260,6 +283,26 @@ const DEFAULT_EVENTS: MotherEventsSettings = {
 	debounceMs: 100,
 	maxRetries: 3,
 	retryBaseMs: 100,
+};
+
+const DEFAULT_LEARNING: MotherLearningSettings = {
+	enabled: true,
+	sentimentModel: null,
+	maxLearningsPerDay: 20,
+};
+
+const DEFAULT_WISDOM: MotherWisdomSettings = {
+	enabled: true,
+	maxActiveChars: 500,
+	promotionThreshold: 0.8,
+	clusterMinOccurrences: 3,
+	decayDays: 90,
+};
+
+const DEFAULT_RELATIONSHIPS: MotherRelationshipSettings = {
+	enabled: true,
+	minTurnsForExtraction: 2,
+	deduplicationThreshold: 0.85,
 };
 
 /**
@@ -375,6 +418,18 @@ export class MotherSettingsManager {
 
 	getEventsSettings(): MotherEventsSettings {
 		return { ...DEFAULT_EVENTS, ...this.settings.events };
+	}
+
+	getLearningSettings(): MotherLearningSettings {
+		return { ...DEFAULT_LEARNING, ...this.settings.learning };
+	}
+
+	getWisdomSettings(): MotherWisdomSettings {
+		return { ...DEFAULT_WISDOM, ...this.settings.wisdom };
+	}
+
+	getRelationshipSettings(): MotherRelationshipSettings {
+		return { ...DEFAULT_RELATIONSHIPS, ...this.settings.relationships };
 	}
 
 	getVaultPath(): string | undefined {
