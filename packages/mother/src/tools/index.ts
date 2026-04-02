@@ -6,6 +6,8 @@ import { createBashTool } from "./bash.js";
 import { createEditTool } from "./edit.js";
 import { initCommandGuard, initPathGuard, parseAllowedCommandsEnv } from "./guard.js";
 import { createReadTool } from "./read.js";
+import { createRecallTool } from "./recall.js";
+import { createSearchTool } from "./search.js";
 import { createWriteTool } from "./write.js";
 
 export { setUploadFunction } from "./attach.js";
@@ -35,6 +37,8 @@ export function createMomTools(
 		createBashTool(executor, settings),
 		createEditTool(executor, guardWorkspaceDir),
 		createWriteTool(executor, guardWorkspaceDir),
+		createSearchTool(settings),
+		createRecallTool(settings),
 		guardWorkspaceDir ? createAttachTool(guardWorkspaceDir) : attachTool,
 	];
 	return tools;
