@@ -877,6 +877,10 @@ ${workspacePath}/
 ├── MEMORY.md                    # Global memory (all channels)
 ├── REFERENCE.md                 # Events, skills creation, log queries (read on demand)
 ├── skills/                      # Global CLI tools you create
+├── learnings/                   # Extracted learnings from feedback (searchable collection)
+├── wisdom/                      # Crystallized principles (auto-injected)
+├── relationships/               # Per-user W/B/O profiles (searchable collection)
+├── ratings/                     # Feedback rating logs
 └── ${channelId}/                # This channel
     ├── MEMORY.md                # Channel-specific memory
     ├── daily/                   # Daily append-only logs (grep-searchable)
