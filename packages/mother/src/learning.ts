@@ -6,7 +6,7 @@
  * conversation, then writes it as a markdown file with YAML frontmatter
  * to the workspace learnings directory.
  */
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { MotherSettingsManager } from "./context.js";
 import * as log from "./log.js";
@@ -135,6 +135,8 @@ function formatDateForFilename(date: Date): string {
  * Returns the absolute path to the written file.
  */
 export async function writeLearningFile(learningsDir: string, ctx: LearningContext): Promise<string> {
+	await mkdir(learningsDir, { recursive: true });
+
 	const now = new Date();
 	const datePart = formatDateForFilename(now);
 	const slug = toSlug(ctx.topic);
@@ -142,17 +144,16 @@ export async function writeLearningFile(learningsDir: string, ctx: LearningConte
 	const filePath = join(learningsDir, filename);
 
 	const tagsYaml = `[${ctx.tags.join(", ")}]`;
-	const isoDate = now.toISOString().split("T")[0];
 
 	const content = `---
-topic: ${ctx.topic}
+topic: "${ctx.topic.replace(/"/g, '\\"')}"
 category: ${ctx.category}
-rating: ${ctx.rating}
+rating: ${ctx.rating ?? "null"}
 sentiment: ${ctx.sentiment}
 tags: ${tagsYaml}
-userId: ${ctx.userId}
-channelId: ${ctx.channelId}
-date: ${isoDate}
+userId: "${ctx.userId}"
+channelId: "${ctx.channelId}"
+timestamp: ${now.toISOString()}
 ---
 
 ${ctx.insight}

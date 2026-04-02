@@ -48,7 +48,7 @@ describe("writeLearningFile", () => {
 
 		expect(existsSync(path)).toBe(true);
 		const content = readFileSync(path, "utf-8");
-		expect(content).toContain("topic: error handling");
+		expect(content).toContain('topic: "error handling"');
 		expect(content).toContain("category: communication");
 		expect(content).toContain("rating: 4");
 		expect(content).toContain("sentiment: negative");
