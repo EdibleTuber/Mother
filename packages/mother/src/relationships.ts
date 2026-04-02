@@ -209,7 +209,7 @@ export function mergeNotes(profile: UserProfile, notes: ExtractedNote[]): UserPr
 		const existing = section.find((n) => isDuplicate(n.content, note.content));
 
 		if (existing) {
-			existing.confidence = note.confidence;
+			existing.confidence = Math.max(existing.confidence, note.confidence);
 			existing.date = today;
 		} else {
 			section.push({ content: note.content, confidence: note.confidence, date: today });
@@ -242,6 +242,9 @@ Respond in JSON only with a "notes" array. Each note has:
 - content: a concise factual statement (under 15 words)
 - confidence: 0.0–1.0 how confident you are this is accurate
 
+Only include notes with confidence >= 0.6. Return empty notes array if nothing noteworthy.
+Ignore project-specific or task-specific details.
+
 Example: {"notes": [{"type": "W", "content": "Runs a Pi 5 homelab", "confidence": 0.95}]}
 
 If there is nothing notable to extract, respond with: {"notes": []}`;
@@ -271,16 +274,13 @@ export function parseExtractionResponse(text: string): ExtractedNote[] | null {
 		const notes: ExtractedNote[] = [];
 
 		for (const item of parsed.notes) {
-			if (
-				typeof item.type === "string" &&
-				validTypes.has(item.type) &&
-				typeof item.content === "string" &&
-				typeof item.confidence === "number"
-			) {
+			if (typeof item.type === "string" && validTypes.has(item.type) && typeof item.content === "string") {
+				const conf = typeof item.confidence === "number" ? item.confidence : Number(item.confidence);
+				if (Number.isNaN(conf)) continue;
 				notes.push({
 					type: item.type as "W" | "B" | "O",
 					content: item.content,
-					confidence: item.confidence,
+					confidence: conf,
 				});
 			}
 		}
@@ -314,7 +314,8 @@ export async function extractRelationshipNotes(
 	if (!relationshipSettings.enabled) return null;
 
 	const ollamaUrl = settings.getOllamaUrl();
-	const modelId = settings.getDefaultModel();
+	const learningSettings = settings.getLearningSettings();
+	const modelId = learningSettings.sentimentModel || settings.getDefaultModel();
 
 	const prompt = buildRelationshipPrompt(userName, userId, recentTurns);
 
