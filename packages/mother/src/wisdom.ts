@@ -169,9 +169,9 @@ export function getActiveWisdom(wisdomDir: string, maxChars: number): string {
 	if (content.length <= maxChars) return content;
 	const cutoff = content.lastIndexOf("\n\n## ", maxChars);
 	if (cutoff > 0) {
-		return content.substring(0, cutoff) + "\n[Wisdom truncated]";
+		return `${content.substring(0, cutoff)}\n[Wisdom truncated]`;
 	}
-	return content.substring(0, maxChars) + "\n[Wisdom truncated]";
+	return `${content.substring(0, maxChars)}\n[Wisdom truncated]`;
 }
 
 /**
