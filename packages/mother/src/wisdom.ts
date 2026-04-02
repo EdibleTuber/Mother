@@ -14,7 +14,7 @@
  *   - Last updated: YYYY-MM-DD
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { MotherSettingsManager } from "./context.js";
 import * as log from "./log.js";
@@ -52,7 +52,7 @@ export function parseWisdomFile(content: string): WisdomEntry[] {
 		if (!trimmed) continue;
 
 		// Header line: ## Title [confidence: NN%]
-		const headerMatch = trimmed.match(/^## (.+?) \[confidence: (\d+)%\]/);
+		const headerMatch = trimmed.match(/^## (.+) \[confidence: (\d+)%\]/);
 		if (!headerMatch) continue;
 
 		const title = headerMatch[1].trim();
@@ -114,6 +114,7 @@ function readWisdomFile(wisdomDir: string, filename: string): WisdomEntry[] {
 }
 
 function writeWisdomFile(wisdomDir: string, filename: string, entries: WisdomEntry[]): void {
+	mkdirSync(wisdomDir, { recursive: true });
 	const filePath = join(wisdomDir, filename);
 	writeFileSync(filePath, serializeWisdomFile(entries), "utf-8");
 }
@@ -166,7 +167,11 @@ export function getActiveWisdom(wisdomDir: string, maxChars: number): string {
 	if (!existsSync(filePath)) return "";
 	const content = readFileSync(filePath, "utf-8");
 	if (content.length <= maxChars) return content;
-	return content.substring(0, maxChars);
+	const cutoff = content.lastIndexOf("\n\n## ", maxChars);
+	if (cutoff > 0) {
+		return content.substring(0, cutoff) + "\n[Wisdom truncated]";
+	}
+	return content.substring(0, maxChars) + "\n[Wisdom truncated]";
 }
 
 /**
@@ -189,7 +194,7 @@ export function decayWisdom(wisdomDir: string, decayDays: number, decayAmount: n
 
 		if (ageMs >= decayMs) {
 			// Apply decay, round to 2 decimal places to avoid floating-point noise
-			const newConfidence = Math.round((entry.confidence - decayAmount) * 100) / 100;
+			const newConfidence = Math.max(0, Math.round((entry.confidence - decayAmount) * 100) / 100);
 			const decayed = { ...entry, confidence: newConfidence };
 
 			if (newConfidence < archiveThreshold) {
