@@ -26,10 +26,14 @@ import { homedir } from "os";
 import { join } from "path";
 import { MotherSettingsManager, syncLogToSessionManager } from "./context.js";
 import type { ChannelInfo, DiscordContext, UserInfo } from "./discord.js";
+import { extractLearning } from "./learning.js";
 import * as log from "./log.js";
+import { analyzeSentiment, appendRating } from "./ratings.js";
+import { extractRelationshipNotes } from "./relationships.js";
 import { createExecutor, type SandboxConfig } from "./sandbox.js";
 import type { ChannelStore } from "./store.js";
 import { createMomTools, setUploadFunction } from "./tools/index.js";
+import { decayWisdom, getActiveWisdom, processWisdomFromLearning, promoteExplicitly } from "./wisdom.js";
 
 // ============================================================================
 // Model configuration
@@ -413,7 +417,7 @@ async function bootstrapWorkspace(
 	}
 
 	// Workspace-level directories
-	for (const sub of ["skills", "events"]) {
+	for (const sub of ["skills", "events", "learnings", "wisdom", "relationships", "ratings"]) {
 		await mkdir(join(workspaceDir, sub), { recursive: true });
 	}
 
@@ -432,6 +436,14 @@ async function bootstrapWorkspace(
 	const motherPath = join(workspaceDir, "MOTHER.md");
 	if (!existsSync(motherPath)) {
 		await writeFile(motherPath, generateMotherTemplate());
+	}
+
+	// Create empty wisdom files if they don't exist
+	for (const file of ["active.md", "pending.md", "archive.md"]) {
+		const wisdomFile = join(workspaceDir, "wisdom", file);
+		if (!existsSync(wisdomFile)) {
+			await writeFile(wisdomFile, "");
+		}
 	}
 
 	// Generate/regenerate REFERENCE.md (always overwrite — it's auto-generated)
@@ -809,6 +821,7 @@ function buildSystemPrompt(
 	fileTree = "",
 	modelInfo?: { id: string; provider: string },
 	knowledgeBase = "",
+	wisdom = "",
 ): string {
 	const channelPath = `${workspacePath}/${channelId}`;
 	const isDocker = sandboxConfig.type === "docker";
@@ -900,6 +913,13 @@ These are NOT injected into your prompt — use grep to search them when you nee
 
 ### Current Memory
 ${memory}
+
+${wisdom ? `\n## Learned Wisdom\n${wisdom}\n` : ""}
+## Feedback & Learning
+You have a learning system that captures feedback from users. When a user explicitly
+asks you to "remember that" or says something is important, it will be promoted to
+your wisdom. You can search past learnings and relationship notes via the search tool
+using the "learnings" and "relationships" collections.
 
 ${knowledgeBase ? `${knowledgeBase}\n\n` : ""}## Tools
 - bash: Run shell commands (primary tool). Install packages as needed.
@@ -1122,6 +1142,8 @@ function createRunner(
 		consecutiveToolErrors: 0,
 	};
 
+	let lastAssistantResponse = "";
+
 	// Subscribe to events ONCE
 	session.subscribe(async (event) => {
 		if (!runState.ctx || !runState.logCtx || !runState.queue) return;
@@ -1219,6 +1241,12 @@ function createRunner(
 				}
 
 				const rawText = textParts.join("\n");
+
+				// Track for learning pipeline
+				if (rawText.trim()) {
+					lastAssistantResponse = rawText;
+				}
+
 				const filterThinking = (model as any).thinkingInText === true;
 				const isIntermediate = assistantMsg.stopReason === "toolUse";
 
@@ -1347,6 +1375,10 @@ function createRunner(
 			const skills = loadMotherSkills(channelDir, workspacePath);
 			const fileTree = generateWorkspaceTree(hostWorkspaceDir, workspacePath, settings);
 			const knowledgeBase = await fetchCollections(settings);
+			const wisdomSettings = settings.getWisdomSettings();
+			const wisdom = wisdomSettings.enabled
+				? getActiveWisdom(join(channelDir, "..", "wisdom"), wisdomSettings.maxActiveChars)
+				: "";
 			const systemPrompt = buildSystemPrompt(
 				workspacePath,
 				channelId,
@@ -1359,6 +1391,7 @@ function createRunner(
 				fileTree,
 				{ id: model.id, provider: model.provider },
 				knowledgeBase,
+				wisdom,
 			);
 			session.agent.setSystemPrompt(systemPrompt);
 
@@ -1386,6 +1419,76 @@ function createRunner(
 			};
 			runState.stopReason = "stop";
 			runState.errorMessage = undefined;
+
+			// Learning pipeline: analyze sentiment of user message against last response
+			const learningSettings = settings.getLearningSettings();
+			if (learningSettings.enabled && lastAssistantResponse) {
+				const abortController = new AbortController();
+				analyzeSentiment(settings, lastAssistantResponse, ctx.message.text, abortController.signal)
+					.then(async (sentiment) => {
+						if (!sentiment) return;
+
+						const ratingsDir = join(channelDir, "..", "ratings");
+						await appendRating(ratingsDir, channelId, {
+							ts: Date.now(),
+							userId: ctx.message.user,
+							channelId,
+							rating: sentiment.rating,
+							sentiment: sentiment.sentiment,
+							confidence: sentiment.confidence,
+							context: sentiment.context,
+							promotionIntent: sentiment.promotion_intent,
+						});
+
+						if (sentiment.is_feedback) {
+							const recentMessages = session.messages
+								.slice(-10)
+								.filter((m) => m.role === "user" || m.role === "assistant")
+								.map((m) => {
+									const text =
+										typeof m.content === "string"
+											? m.content
+											: (m.content as any[])
+													.filter((c: any) => c.type === "text")
+													.map((c: any) => c.text)
+													.join("\n");
+									return `${m.role === "user" ? "User" : "Assistant"}: ${text}`;
+								})
+								.join("\n\n");
+
+							const learningPath = await extractLearning(
+								settings,
+								sentiment,
+								recentMessages,
+								ctx.message.user,
+								channelId,
+								join(channelDir, ".."),
+							);
+
+							if (learningPath) {
+								await processWisdomFromLearning(
+									settings,
+									join(channelDir, ".."),
+									sentiment.context,
+									sentiment.context,
+								);
+							}
+
+							if (sentiment.promotion_intent && sentiment.context) {
+								promoteExplicitly(
+									settings,
+									join(channelDir, ".."),
+									sentiment.context,
+									lastAssistantResponse.slice(0, 200),
+								);
+							}
+						}
+					})
+					.catch((err) => {
+						const msg = err instanceof Error ? err.message : String(err);
+						log.logWarning("Learning pipeline error", msg);
+					});
+			}
 
 			// Create queue for this run
 			let queueChain = Promise.resolve();
@@ -1461,6 +1564,55 @@ function createRunner(
 
 			// Wait for queued messages
 			await queueChain;
+
+			// Relationship extraction (post-run, non-blocking)
+			const relSettings = settings.getRelationshipSettings();
+			if (relSettings.enabled) {
+				const userMessages = session.messages.filter((m) => m.role === "user");
+				if (userMessages.length >= relSettings.minTurnsForExtraction) {
+					const recentTurns = session.messages
+						.slice(-10)
+						.filter((m) => m.role === "user" || m.role === "assistant")
+						.map((m) => {
+							const text =
+								typeof m.content === "string"
+									? m.content
+									: (m.content as any[])
+											.filter((c: any) => c.type === "text")
+											.map((c: any) => c.text)
+											.join("\n");
+							return `${m.role === "user" ? "User" : "Assistant"}: ${text}`;
+						})
+						.join("\n\n");
+
+					extractRelationshipNotes(
+						settings,
+						join(channelDir, ".."),
+						ctx.message.user,
+						ctx.message.userName || "unknown",
+						recentTurns,
+					).catch((err) => {
+						const msg = err instanceof Error ? err.message : String(err);
+						log.logWarning("Relationship extraction error", msg);
+					});
+				}
+			}
+
+			// Wisdom decay check
+			const wisdomDecaySettings = settings.getWisdomSettings();
+			if (wisdomDecaySettings.enabled) {
+				try {
+					decayWisdom(
+						join(channelDir, "..", "wisdom"),
+						wisdomDecaySettings.decayDays,
+						wisdomDecaySettings.decayAmount,
+						0.5,
+					);
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					log.logWarning("Wisdom decay error", msg);
+				}
+			}
 
 			// Handle error case
 			if (runState.stopReason === "error" && runState.errorMessage) {
