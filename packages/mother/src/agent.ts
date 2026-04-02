@@ -751,6 +751,52 @@ function summarizeToolResult(msg: {
 	} as AgentMessage;
 }
 
+/**
+ * Fetch available collections from the inference server's vector DB.
+ * Returns a formatted string for the system prompt, or empty string if unavailable.
+ */
+async function fetchCollections(settings: MotherSettingsManager): Promise<string> {
+	if (settings.getDefaultProvider() !== "ollama") {
+		return "";
+	}
+
+	const ollamaUrl = settings.getOllamaUrl();
+	const baseUrl = ollamaUrl.replace(/\/v1\/?$/, "");
+	const url = `${baseUrl}/collections`;
+
+	try {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 5000);
+
+		const response = await fetch(url, { signal: controller.signal });
+		clearTimeout(timeout);
+
+		if (!response.ok) {
+			return "";
+		}
+
+		const data = (await response.json()) as {
+			collections: { id: string; doc_type: string; doc_count: number }[];
+		};
+
+		const collections = data.collections;
+		if (!collections || collections.length === 0) {
+			return "";
+		}
+
+		let section = "## Knowledge Base\nYou can search and retrieve documents from these collections:\n";
+		for (const c of collections) {
+			section += `- ${c.id} (${c.doc_count} docs, type: ${c.doc_type})\n`;
+		}
+		section += "\nUse the `search` tool to find relevant documents by natural language query.";
+		section += "\nUse the `recall` tool to load full document content into your context.";
+
+		return section;
+	} catch {
+		return "";
+	}
+}
+
 function buildSystemPrompt(
 	workspacePath: string,
 	channelId: string,
@@ -762,6 +808,7 @@ function buildSystemPrompt(
 	skills: Skill[],
 	fileTree = "",
 	modelInfo?: { id: string; provider: string },
+	knowledgeBase = "",
 ): string {
 	const channelPath = `${workspacePath}/${channelId}`;
 	const isDocker = sandboxConfig.type === "docker";
@@ -854,12 +901,14 @@ These are NOT injected into your prompt — use grep to search them when you nee
 ### Current Memory
 ${memory}
 
-## Tools
+${knowledgeBase ? `${knowledgeBase}\n\n` : ""}## Tools
 - bash: Run shell commands (primary tool). Install packages as needed.
 - read: Read files
 - write: Create/overwrite files
 - edit: Surgical file edits
 - attach: Share files to Discord
+- search: Search the knowledge base for relevant documents
+- recall: Load a full document from the knowledge base into context
 
 Each tool requires a "label" parameter (shown to user).
 `;
@@ -1297,6 +1346,7 @@ function createRunner(
 			const motherNotes = getMotherNotes(channelDir, settings);
 			const skills = loadMotherSkills(channelDir, workspacePath);
 			const fileTree = generateWorkspaceTree(hostWorkspaceDir, workspacePath, settings);
+			const knowledgeBase = await fetchCollections(settings);
 			const systemPrompt = buildSystemPrompt(
 				workspacePath,
 				channelId,
@@ -1308,6 +1358,7 @@ function createRunner(
 				skills,
 				fileTree,
 				{ id: model.id, provider: model.provider },
+				knowledgeBase,
 			);
 			session.agent.setSystemPrompt(systemPrompt);
 
