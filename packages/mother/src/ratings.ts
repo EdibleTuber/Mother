@@ -4,7 +4,7 @@
  * Sends user messages to the inference server for sentiment analysis,
  * detects feedback, and stores rating records as JSONL.
  */
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { MotherSettingsManager } from "./context.js";
 import * as log from "./log.js";
@@ -51,9 +51,14 @@ export function parseSentimentResponse(text: string): SentimentResult | null {
 		if (typeof parsed.is_feedback !== "boolean" || typeof parsed.sentiment !== "string") {
 			return null;
 		}
+		// Validate sentiment enum
+		const validSentiments = new Set(["positive", "negative", "neutral"]);
+		if (!validSentiments.has(parsed.sentiment)) {
+			return null;
+		}
 		return {
 			is_feedback: parsed.is_feedback,
-			rating: typeof parsed.rating === "number" ? parsed.rating : null,
+			rating: typeof parsed.rating === "number" && parsed.rating >= 1 && parsed.rating <= 10 ? parsed.rating : null,
 			sentiment: parsed.sentiment,
 			confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
 			context: typeof parsed.context === "string" ? parsed.context : "",
@@ -65,11 +70,9 @@ export function parseSentimentResponse(text: string): SentimentResult | null {
 }
 
 export async function appendRating(ratingsDir: string, channelId: string, record: RatingRecord): Promise<void> {
-	if (!existsSync(ratingsDir)) {
-		mkdirSync(ratingsDir, { recursive: true });
-	}
+	await mkdir(ratingsDir, { recursive: true });
 	const filePath = join(ratingsDir, `${channelId}.jsonl`);
-	appendFileSync(filePath, `${JSON.stringify(record)}\n`);
+	await appendFile(filePath, `${JSON.stringify(record)}\n`);
 }
 
 export async function analyzeSentiment(
