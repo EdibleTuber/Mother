@@ -1167,8 +1167,8 @@ function createRunner(
 
 			log.logToolStart(logCtx, agentEvent.toolName, label, agentEvent.args as Record<string, unknown>);
 
-			// Transient status: replace channel message with current tool label
-			queue.enqueue(() => ctx.replaceMessage(`*${label}*`), "tool status");
+			// Append tool status so the user can see the full history of tool calls
+			queue.enqueue(() => ctx.appendStatus(`*${label}*`), "tool status");
 		} else if (event.type === "tool_execution_end") {
 			const agentEvent = event as AgentEvent & { type: "tool_execution_end" };
 			const resultStr = extractToolResultText(agentEvent.result);
@@ -1278,7 +1278,7 @@ function createRunner(
 			}
 		} else if (event.type === "auto_compaction_start") {
 			log.logInfo(`Auto-compaction started (reason: ${(event as any).reason})`);
-			queue.enqueue(() => ctx.replaceMessage("*Compacting context...*"), "compaction start");
+			queue.enqueue(() => ctx.appendStatus("*Compacting context...*"), "compaction start");
 		} else if (event.type === "auto_compaction_end") {
 			const compEvent = event as any;
 			if (compEvent.result) {
@@ -1294,7 +1294,7 @@ function createRunner(
 			const retryEvent = event as any;
 			log.logWarning(`Retrying (${retryEvent.attempt}/${retryEvent.maxAttempts})`, retryEvent.errorMessage);
 			queue.enqueue(
-				() => ctx.replaceMessage(`*Retrying (${retryEvent.attempt}/${retryEvent.maxAttempts})...*`),
+				() => ctx.appendStatus(`*Retrying (${retryEvent.attempt}/${retryEvent.maxAttempts})...*`),
 				"retry",
 			);
 		}

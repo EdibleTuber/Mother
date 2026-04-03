@@ -227,9 +227,17 @@ function getState(channelId: string): ChannelState {
 function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: ChannelState, isEvent?: boolean) {
 	let message: Message | null = null;
 	let accumulatedText = "";
+	const statusLines: string[] = [];
 	let isWorking = true;
 	const workingIndicator = " ...";
 	let updatePromise = Promise.resolve();
+
+	const buildDisplay = () => {
+		const statusBlock = statusLines.length > 0 ? statusLines.join("\n") : "";
+		const combined =
+			statusBlock && accumulatedText ? `${statusBlock}\n${accumulatedText}` : statusBlock || accumulatedText;
+		return isWorking ? combined + workingIndicator : combined;
+	};
 
 	const user = bot.getUser(event.user);
 
@@ -257,7 +265,7 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 		respond: async (text: string, shouldLog = true) => {
 			updatePromise = updatePromise.then(async () => {
 				accumulatedText = accumulatedText ? `${accumulatedText}\n${text}` : text;
-				const displayText = isWorking ? accumulatedText + workingIndicator : accumulatedText;
+				const displayText = buildDisplay();
 
 				if (message) {
 					await bot.updateMessage(message, displayText);
@@ -272,10 +280,23 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 			await updatePromise;
 		},
 
+		appendStatus: async (text: string) => {
+			updatePromise = updatePromise.then(async () => {
+				statusLines.push(text);
+				const displayText = buildDisplay();
+				if (message) {
+					await bot.updateMessage(message, displayText);
+				} else {
+					message = await bot.postMessage(responseChannelId, displayText);
+				}
+			});
+			await updatePromise;
+		},
+
 		replaceMessage: async (text: string) => {
 			updatePromise = updatePromise.then(async () => {
 				accumulatedText = text;
-				const displayText = isWorking ? accumulatedText + workingIndicator : accumulatedText;
+				const displayText = buildDisplay();
 				if (message) {
 					await bot.updateMessage(message, displayText);
 				} else {
@@ -294,7 +315,7 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 				updatePromise = updatePromise.then(async () => {
 					if (!message) {
 						accumulatedText = eventFilename ? `*Starting event: ${eventFilename}*` : "*Thinking*";
-						message = await bot.postMessage(responseChannelId, accumulatedText + workingIndicator);
+						message = await bot.postMessage(responseChannelId, buildDisplay());
 					}
 				});
 				await updatePromise;
@@ -309,8 +330,7 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 			updatePromise = updatePromise.then(async () => {
 				isWorking = working;
 				if (message) {
-					const displayText = isWorking ? accumulatedText + workingIndicator : accumulatedText;
-					await bot.updateMessage(message, displayText);
+					await bot.updateMessage(message, buildDisplay());
 				}
 			});
 			await updatePromise;

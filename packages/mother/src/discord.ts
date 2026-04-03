@@ -76,6 +76,7 @@ export interface DiscordContext {
 	channels: ChannelInfo[];
 	users: UserInfo[];
 	respond: (text: string, shouldLog?: boolean) => Promise<void>;
+	appendStatus: (text: string) => Promise<void>;
 	replaceMessage: (text: string) => Promise<void>;
 	setTyping: (isTyping: boolean) => Promise<void>;
 	uploadFile: (filePath: string, title?: string) => Promise<void>;
