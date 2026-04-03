@@ -1,34 +1,20 @@
 # Mother
 
-A Discord bot assistant that runs on a Raspberry Pi 5. Uses a local LLM (Qwen3.5-35B via Ollama on a remote inference server) as its brain.
+A Discord bot assistant powered by a local LLM via Ollama. Lightweight enough to run on a Raspberry Pi, but works on any Linux machine.
 
 Forked from [badlogic/pi-mono](https://github.com/badlogic/pi-mono). Mother lives in [`packages/mother/`](packages/mother/) and depends on the `pi-ai`, `pi-agent-core`, and `pi-coding-agent` packages from the monorepo.
 
-## Raspberry Pi 5 Setup (Ubuntu Server)
+## Setup (Ubuntu Server)
 
-Complete guide for a fresh install from scratch.
+Complete guide for a fresh install from scratch. Works on any Linux machine -- a Raspberry Pi, a VM, a spare laptop, etc.
 
 ### Prerequisites
 
-- Raspberry Pi 5 (4GB+ RAM)
-- SD card (32GB+)
-- Ollama running on a reachable inference server (or locally)
+- A Linux machine (ARM64 or x86_64)
+- Ollama running locally or on a reachable server
 - Discord bot token and guild ID
 
-### 1. Flash Ubuntu Server
-
-- Download **Ubuntu Server 24.04 LTS (ARM64)** from [ubuntu.com](https://ubuntu.com/download/raspberry-pi)
-- Flash to SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
-- In imager settings: set hostname, enable SSH, set username/password, configure WiFi if needed
-
-### 2. SSH in and update
-
-```bash
-ssh youruser@pi-hostname
-sudo apt update && sudo apt upgrade -y
-```
-
-### 3. Install Node.js 22
+### 1. Install Node.js 22
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
@@ -36,13 +22,13 @@ sudo apt install -y nodejs
 node -v  # should be 22.x
 ```
 
-### 4. Install build tools
+### 2. Install build tools
 
 ```bash
 sudo apt install -y git build-essential
 ```
 
-### 5. Set up SSH key for GitHub (if needed)
+### 3. Set up SSH key for GitHub (if needed)
 
 ```bash
 ssh-keygen -t ed25519 -C "your-github-noreply@users.noreply.github.com"
@@ -50,7 +36,7 @@ cat ~/.ssh/id_ed25519.pub
 # Add this key at https://github.com/settings/keys
 ```
 
-### 6. Clone and build
+### 4. Clone and build
 
 ```bash
 git clone git@github.com:EdibleTuber/Mother.git ~/pi-mono
@@ -59,7 +45,7 @@ npm ci
 npm run build
 ```
 
-### 7. Link the CLIs
+### 5. Link the CLIs
 
 ```bash
 cd ~/pi-mono/packages/coding-agent && npm link
@@ -68,7 +54,7 @@ cd ~/pi-mono/packages/mother && npm link
 
 This makes `pi` and `mother` available as commands.
 
-### 8. Authenticate with Anthropic (optional, for paid API models)
+### 6. Authenticate with Anthropic (optional, for paid API models)
 
 ```bash
 pi /login anthropic
@@ -81,7 +67,7 @@ This will:
 
 Tokens are stored in `~/.pi/agent/auth.json`. Tokens auto-refresh. This step is only needed if you configure Mother to use an Anthropic model instead of Ollama.
 
-### 9. Set up Discord secrets
+### 7. Set up Discord secrets
 
 Store tokens in a root-owned env file (not `.bashrc`):
 
@@ -100,7 +86,7 @@ sudo chown root:root /etc/mother.env
 
 systemd reads this before dropping to the `mother` user, so the process gets the vars but the user can't read the file directly.
 
-### 10. Start Mother
+### 8. Start Mother
 
 ```bash
 mkdir -p ~/mother-workspace
@@ -113,7 +99,7 @@ She bootstraps the workspace structure on first run. Use `--cli` for local testi
 node ~/pi-mono/packages/mother/dist/main.js ~/mother-workspace --sandbox=host --cli
 ```
 
-### 11. Auto-start Mother on boot
+### 9. Auto-start Mother on boot
 
 Create `/etc/systemd/system/mother.service`:
 
@@ -142,9 +128,9 @@ sudo systemctl start mother
 sudo journalctl -u mother -f  # watch logs
 ```
 
-### 12. (Optional) Kiosk display for built-in screen
+### 10. (Optional) Kiosk display
 
-If your Pi has a screen and you want it to auto-display a dashboard Mother builds:
+If your machine has a screen and you want it to auto-display a dashboard Mother builds:
 
 ```bash
 sudo apt install -y cage chromium-browser
@@ -211,31 +197,15 @@ MOTHER_ALLOWED_COMMANDS=-ssh,-scp,-rsync,-python,-python3,-node,-npm,-npx,-kill,
 
 ## Architecture
 
-Mother is a competent agent that handles tasks directly using her tools (bash, read, write, edit, attach). She runs on the Pi and calls a local LLM via Ollama on a remote inference server.
+Mother is a competent agent that handles tasks directly using her tools (bash, read, write, edit, attach). She calls a local LLM via Ollama, either on the same machine or a remote inference server.
 
 ```
-Discord <-> Pi 5 (Mother) <-> Ollama (Inference Server, 192.168.1.14)
+Discord <-> Host (Mother) <-> Ollama (local or remote)
                 |
                 v
         Workspace filesystem
         (memory, logs, skills, events)
 ```
-
-### Future: Worker Architecture
-
-Mother will orchestrate Docker containers on a GPU-equipped inference server for heavy workloads:
-
-```
-Mother (Pi 5, orchestrator)
-  |
-  v  REST API
-Inference Server (GPU, Docker)
-  |-- RE worker (jadx, ghidra, radare2)
-  |-- Asset worker (Blender headless, Godot)
-  |-- Workers get Ollama access for tasks needing local LLM reasoning
-```
-
-The API enforces guardrails: container caps, allowed images only, resource limits, and auto-kill timeouts.
 
 See [`packages/mother/DESIGN.md`](packages/mother/DESIGN.md) for full architecture documentation.
 
