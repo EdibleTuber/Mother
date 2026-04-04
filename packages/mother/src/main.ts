@@ -232,8 +232,32 @@ function createDiscordContext(event: DiscordEvent, bot: DiscordBot, state: Chann
 	const workingIndicator = " ...";
 	let updatePromise = Promise.resolve();
 
+	const DISCORD_CHAR_LIMIT = 2000;
+
 	const buildDisplay = () => {
-		const statusBlock = statusLines.length > 0 ? statusLines.join("\n") : "";
+		// Reserve space for the main text, working indicator, and a newline separator
+		const overhead = workingIndicator.length + 1;
+		const budget = DISCORD_CHAR_LIMIT - accumulatedText.length - overhead;
+
+		let statusBlock = "";
+		if (statusLines.length > 0 && budget > 0) {
+			// Walk backwards from the newest status line, fitting as many as possible
+			const kept: string[] = [];
+			let used = 0;
+			for (let i = statusLines.length - 1; i >= 0; i--) {
+				const cost = statusLines[i].length + (kept.length > 0 ? 1 : 0); // +1 for newline
+				if (used + cost > budget) break;
+				kept.push(statusLines[i]);
+				used += cost;
+			}
+			const dropped = statusLines.length - kept.length;
+			kept.reverse();
+			if (dropped > 0) {
+				kept.unshift(`*(${dropped} earlier)*`);
+			}
+			statusBlock = kept.join("\n");
+		}
+
 		const combined =
 			statusBlock && accumulatedText ? `${statusBlock}\n${accumulatedText}` : statusBlock || accumulatedText;
 		return isWorking ? combined + workingIndicator : combined;
